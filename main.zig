@@ -91,6 +91,7 @@ fn help() void {
 \\
 \\Use offline database(create also updates): -offline {use, delete, create}
 \\WRITE ARGS:
+\\PIN: -pin {PIN}
 \\Verbände: -verband {Verbandskürzel}
 \\Staffel: -staffel {staffelskürzel}
 \\Spieltag: -spieltag {Spieltagsnummer}
