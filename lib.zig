@@ -6,13 +6,21 @@ const c = @cImport({
 });
 
 const time_t = i64;
+const print = std.debug.print;
 
+const allocator: std.mem.Allocator = std.heap.c_allocator;
+
+//TODO can we make this pub or do we really have to write a function for this
 var CYCLEU_USE_CACHE: bool = false;
 
-const Associations = enum {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
-const AssociationsCode = [][]const u8 {"de", "by", "bb", "bw", "he", "rp"};
+var curl: ?*c.CURL = null;
 
-const WriteError = error{AuthCodeWrong, LeagueUnknown, GameUnknown, Internet};
+
+//TODO Reverse engineer API for getting all available Associations
+const Associations = enum {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
+const AssociationsCode = [_][]const u8 {"de", "by", "bb", "bw", "he", "rp"};
+
+const AccessError = error{AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown};
 
 const Association = struct {
     name_short: []const u8,
@@ -129,24 +137,71 @@ const Ranking = struct {
     }
 };
 
-fn _fetch_link(link: []const u8) []const u8 {
+fn receive_json(data: ?*anyopaque, size: usize, nmemb: usize, json: *?*anyopaque) callconv(.C) usize {
+    if(nmemb != @sizeOf(u8)){
+        print("ERROR: We did not receive json data from curl aka cycleball.eu\n");
+        return 1;
+    }
+    json.* = allocator.alloc(u8, size);
+    std.mem.copyForwards(u8, json.*, data);
 }
 
-fn fetch_associations(association: Associations, recursive: bool) !Association{
-    const url = "https://" ++ AssociationsCode[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
-    _fetch_link(url);
+fn init_curl() AccessError!void {
+    c.curl_global_init(c.CURL_GLOBAL_DEFAULT);
+    curl = c.curl_easy_init() orelse {
+        print("ERROR: CURL is striking. Come back tomorrow\n", .{});
+        return AccessError.Curl;
+    };
+    c.curl_easy_setopt(curl, c.CURLOPT_FOLLOWLOCATION, 1);
+    c.curl_easy_setopt(curl, c.CURLOPT_WRITEFUNCTION, receive_json);
+}
 
+fn fetch_link(link: []const u8) AccessError![]const u8 {
+    var json: []const u8 = undefined;
+    c.curl_easy_setopt(curl, c.CURLOPT_URL, link);
+    c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, @ptrCast(&json));
+    const ret_code = c.curl_easy_perform(curl);
+    if (ret_code != c.CURLE_OK) {
+        print("Fetching JSON failed! Error handling is for later. For now take this dump: %s\n", .{c.curl_easy_strerror(ret_code)});
+        return AccessError.Unknown;
+    }
+    return json;
+}
+
+pub fn fetch_associations(association: Associations, recursive: bool) !Association{
+    if(curl == null)
+        try init_curl();
+    const url = "https://" ++ AssociationsCode[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
+    const json_str: []const u8 = fetch_link(url);
+
+    _ = json_str;
     _ = recursive;
 }
 
-fn fetch_league(association: Association, league_name: []const u8, recursive: bool) !League{
-    const url_general = "https://" ++ association.name_short ++ ".cycleball.eu/api/leagues/" ++ league_name;
-    const url_ranking = "https://" ++ association.name_short ++ ".cycleball.eu/api/leagues/" ++ league_name ++ "/ranking";
-    const url_teams = "https://" ++ association.name_short ++ ".cycleball.eu/api/leagues/" ++ league_name ++ "/teams";
+pub fn fetch_league(association_name_short: []const u8, league_name: []const u8, recursive: bool) !League{
+    if(curl == null)
+        try init_curl();
+    //TODO league name could contain whitespaces!
+    const url_general = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name;
+    const url_ranking = url_general ++ "/ranking";
+    const url_teams = url_general ++ "/teams";
+    _ = url_ranking;
+    _ = url_teams;
+    _ = recursive;
 }
 
-fn fetch_matchday(league: League, number: u8) !Matchday{
-    const url_matchday = "https://" ++ league.association.name_short ++ ".cycleball.eu/api/leagues/" ++ league.name_short ++ "/matchdays/" ++ number;
+pub fn fetch_matchday(association_name_short: []const u8, league_name_short: []const u8, number: u8) !Matchday{
+    if(curl == null)
+        try init_curl();
+    const url_matchday = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name_short ++ "/matchdays/" ++ number;
+    _ = url_matchday;
 }
 
-fn write_game_result(game: Game, game_number: u8, league: League) WriteError!null;
+pub fn write_game_result(game: Game, game_number: u8, league_name_short: []const u8, association_name_short: []const u8) AccessError!void{
+    if(curl == null)
+        try init_curl();
+    _ = game;
+    _ = game_number;
+    _ = league_name_short;
+    _ = association_name_short;
+}
