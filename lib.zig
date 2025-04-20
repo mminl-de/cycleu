@@ -9,10 +9,10 @@ const time_t = i64;
 
 var CYCLEU_USE_CACHE: bool = false;
 
-const ASSOCIATIONS = enum {DEUTSCHLAND, BAYERN, BRANDENBURG, BADEN_WUERTTEMBERG, HESSEN, RHEINLAND_PFALZ};
-const ASSOCIATIONS_CODE = [][]const u8 {"de", "by", "bb", "bw", "he", "rp"};
+const Associations = enum {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
+const AssociationsCode = [][]const u8 {"de", "by", "bb", "bw", "he", "rp"};
 
-const write_err = error{AUTH_CODE_WRONG, LEAGUE_UNKNOWN, GAME_UNKNOWN, INTERNET};
+const WriteError = error{AuthCodeWrong, LeagueUnknown, GameUnknown, Internet};
 
 const Association = struct {
     name_short: []const u8,
@@ -38,11 +38,8 @@ const League = struct {
         phone: []const u8
     },
     ranking: Ranking,
-    rules: std.ArrayList([]const u8),
+    rules: [][]const u8,
     last_update: time_t,
-    pub fn deinit(self: *Association) void {
-        self.rules.deinit();
-    }
 };
 
 const Matchday = struct {
@@ -68,10 +65,14 @@ const Game = struct {
     number: u8,
     team_a: *const Team,
     team_b: *const Team,
-    goals_a: u8,
-    goals_b: u8,
-    goals_half_a: u8,
-    goals_half_b: u8,
+    goals: struct {
+        a: u8,
+        b: u8,
+        half: struct {
+            a: u8,
+            b: u8
+        }
+    },
     is_writable: bool
 };
 
@@ -131,8 +132,8 @@ const Ranking = struct {
 fn _fetch_link(link: []const u8) []const u8 {
 }
 
-fn fetch_associations(association: ASSOCIATIONS, recursive: bool) !Association{
-    const url = "https://" ++ ASSOCIATIONS_CODE[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
+fn fetch_associations(association: Associations, recursive: bool) !Association{
+    const url = "https://" ++ AssociationsCode[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
     _fetch_link(url);
 
     _ = recursive;
@@ -143,8 +144,9 @@ fn fetch_league(association: Association, league_name: []const u8, recursive: bo
     const url_ranking = "https://" ++ association.name_short ++ ".cycleball.eu/api/leagues/" ++ league_name ++ "/ranking";
     const url_teams = "https://" ++ association.name_short ++ ".cycleball.eu/api/leagues/" ++ league_name ++ "/teams";
 }
+
 fn fetch_matchday(league: League, number: u8) !Matchday{
     const url_matchday = "https://" ++ league.association.name_short ++ ".cycleball.eu/api/leagues/" ++ league.name_short ++ "/matchdays/" ++ number;
 }
 
-fn write_game_result(game: Game, game_number: u8, league: League) write_err!null;
+fn write_game_result(game: Game, game_number: u8, league: League) WriteError!null;

@@ -1,25 +1,42 @@
-This repository contains two tools. The first is cycleu-lib, which is a zig (and C ABI compatible) library for reading and writing to cycleball.eu
-cycleu-cli is a proof of concept that uses cycleu-lib to access and write to cycleball.eu through passing straight forward command line arguments.
+# cycleu
+This repository contains **libcycleu**, a C ABI compatible library written in Zig that reads and writes from [cycleball.eu](https://cycleball.eu) and **cycleu**, a CLI frontend over the library. The latter is a proof-of-concept tool that uses straightforward command line arguments to leverage the library.
 
-# cycleu-lib
-`THIS TOOL IS NOT FUNCTIONING, BELOW IS DESCRIBED FEATURES THAT WILL BE HERE SHORTLY`
-This library accesses the internal api of cycleball.eu: cycleball.eu/api which the Website (and probably the app) uses as well. It simply returns json for different queries. As the server is quite slow to answer and to avoid load on the servers it provides an "offline version" where all or parts of the data is cached or even scraped and saved for later. It provides all the data in structs and only has ~5 functions. It is written in zig but is C ABI compatible. It is able to read and write but for writing the according PIN is needed
+## libcycleu
+> [!WARNING]
+> Work In Progress
 
-# cycleu-cli
-`THIS TOOL IS NOT FUNCTIONING, BELOW IS DESCRIBED FEATURES THAT WILL BE HERE SHORTLY`
+This library accesses the internal API of [cycleball.eu/api](https://cycleball.eu/api), which the website (and probably the app) use as well. It simply returns JSON for different queries. As the server is quite slow to answer and to avoid load on the servers it provides an "offline version" where all or parts of the data are cached and saved for later. In order to write to the website, a key given by the admins is needed.<br>
+It provides all the data in structs and only has ~5 functions.<br>
+Although the library is written in Zig, it is C ABI compatible and thus can be used from C/C++ like any other library.
+
+### Installation
+TODO
+
+### Examples
+TODO
+
+## cycleu
+> [!WARNING]
+> Work In Progress
+
 This tools allows to access all data available in cycleball.eu through cycleu-lib. It is written in zig and also uses the capability of cycleu-lib to create and use a offline database of all or just a part of the data from cycleball.eu. The main reason for this feature is, that the response times from cycleball.eu is pretty slow (~1-5s)
 For now you can only get very specific data like goals of team 1 in game 3 in Matchday 4 from 1. BL, DE not spectrums of data like all games of the 4th Matchday
-## Examples
-`cycleu-cli read -verband de -staffel b11 -spieltag 2 -spiel 5 -htscore t1`
-`cycleu-cli read -verband bb -staffel lln -spieltag 1 -spiel 1 -team t2`
-`cycleu-cli read -verband bb -staffel lln -metainfos -staffelleiter -email`
-`cycleu-cli read -verband bw -staffel BK_1 -tabelle -platz 3 -teamname`
-`cycleu-cli read -verband bw -staffel BK_1 -tabelle -platz 8 -goals_diff`
-`cycleu-cli write -pin 123456 -verband de -staffel b11 -spieltag 4 -spiel 2 -score t1 4`
-`cycleu-cli write -pin 654321 -verband de -staffel b11 -spieltag 4 -spiel 2 -htscore t2 9`
-For details on the possible args see `cycleu-cli --help`
 
-# Why?
-We develop [[interscore][github.com/mminl-de/interscore]] a scoreboard and livestream setup for cycleball. The goal is to have easy, high-quality cycleball livestreams for all. For this software we want to integrate cycleball.eu's live results:
-1. To access it and calculate live tables and show the audience the course of the other Matchday that is running besides the one we stream. This can be useful for 1./2. BL especially.
-2. To automatically write the results of the event to cycleball.eu
+### Usage
+```
+cycleu read -verband de -staffel b11 -spieltag 2 -spiel 5 -htscore t1
+cycleu read -verband bb -staffel lln -spieltag 1 -spiel 1 -team t2
+cycleu read -verband bb -staffel lln -metainfos -staffelleiter -email
+cycleu read -verband bw -staffel BK_1 -tabelle -platz 3 -teamname
+cycleu read -verband bw -staffel BK_1 -tabelle -platz 8 -goals_diff
+cycleu write -pin 123456 -verband de -staffel b11 -spieltag 4 -spiel 2 -score t1 4
+cycleu write -pin 654321 -verband de -staffel b11 -spieltag 4 -spiel 2 -htscore t2 9
+```
+
+See also `cycleu --help`.
+
+### Why?
+We developed [Interscore](https://github.com/mminl-de/interscore), a scoreboard and livestream setup for Cycleball. The goal is to provide easy, high-quality Cycleball livestreams for everyone. For this software we want to integrate cycleball.eu's live results:
+
+1. To access them, calculate live tables and show the audience the course of the other matchday that is running besides the one we stream. This can be especially useful for the 1st and 2nd Bundesliga.
+2. To automatically write the results of the event to cycleball.eu.
