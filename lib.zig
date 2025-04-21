@@ -3,11 +3,7 @@
 // TODO COMMENT ALL
 // TODO FINAL generate docs
 const std = @import("std");
-const c = @cImport({
-    //@cInclude("json-c/json.h");
-    //@cInclude("json-c/json_object.h");
-    @cInclude("curl/curl.h");
-});
+const c = @cImport(@cInclude("curl/curl.h"));
 
 const char_ptr = [*:0]const u8;
 const void_ptr = ?*anyopaque;
@@ -22,12 +18,12 @@ var CYCLEU_USE_CACHE: bool = false;
 var curl: ?*c.CURL = null;
 
 const UrlPrefix = enum(u8) {HTTPS, HTTP, FILE};
-const UrlPrefixCode = [_][]const u8 {"https://", "http://", "file://"}; // file://?
+const UrlPrefixCode = [_][]const u8 {"https://", "http://", "file://"}; // TODO CONSIDER file://
 const UrlBase = ".cycleball.eu/api/";
 
 //TODO Reverse engineer API for getting all available Associations
 const Associations = enum(u8) {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
-const AssociationsCode = [_][]const u8{"de", "by", "bb", "bw", "he", "rp"};
+const AssociationsCode = [_]*const [2:0]u8{"de", "by", "bb", "bw", "he", "rp"};
 
 const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown};
 
