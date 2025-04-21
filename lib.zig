@@ -22,12 +22,12 @@ var CYCLEU_USE_CACHE: bool = false;
 var curl: ?*c.CURL = null;
 
 const UrlPrefix = enum(u8) {HTTPS, HTTP, FILE};
-const UrlPrefixCode = [_]char_ptr {"https://", "http://", "file://"}; // file://?
+const UrlPrefixCode = [_][]const u8 {"https://", "http://", "file://"}; // file://?
 const UrlBase = ".cycleball.eu/api/";
 
 //TODO Reverse engineer API for getting all available Associations
 const Associations = enum(u8) {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
-const AssociationsCode = [_]char_ptr {"de", "by", "bb", "bw", "he", "rp"};
+const AssociationsCode = [_][]const u8{"de", "by", "bb", "bw", "he", "rp"};
 
 const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown};
 
@@ -225,15 +225,11 @@ export fn cycleu_fetch_association(
     recursive: bool,
 ) FetchStatus {
     if (curl == null) _ = if(!cycleu_init()) return FetchStatus.Curl;
-    const url_prefix = UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)];
-    const association_string = AssociationsCode[@intFromEnum(association_code)];
-    //const url = url_prefix ++ association_string ++ UrlBase ++ "leagues" + UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)];
-    // TODO STARTHERE make this work. It expects slices, we give c char_ptr
     const url =
-        //UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++
-        url_prefix ++
-        //AssociationsCode[@intFromEnum(association_code)] ++
-        association_string ++
+        UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++
+        //url_prefix ++
+        AssociationsCode[@intFromEnum(association_code)] ++
+        //association_string ++
         UrlBase ++ "leagues";
 
     const json_str: []const u8 = fetch_url(url);
