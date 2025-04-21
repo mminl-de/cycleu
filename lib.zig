@@ -21,6 +21,9 @@ var CYCLEU_USE_CACHE: bool = false;
 
 var curl: ?*c.CURL = null;
 
+const UrlPrefix = enum(u8) {HTTPS, HTTP, FILE};
+const UrlPrefixCode = [_]char_ptr {"https://", "http://", "file://"}; // file://?
+const UrlBase = ".cycleball.eu/api/";
 
 //TODO Reverse engineer API for getting all available Associations
 const Associations = enum(u8) {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
@@ -154,24 +157,10 @@ const Ranking = extern struct {
     rank_n: u8
 };
 
-fn receive_json(data: void_ptr, size: usize, nmemb: usize, json: *void_ptr) usize {
-    if (size != @sizeOf(u8)) {
-        print("ERROR: We did not receive json data from curl aka cycleball.eu\n", .{});
-        return 0;
-    }
-    //json.* = blk: {
-    //    if (allocator.alloc(anyopaque, size)) |val| {
-    //        const result: void_ptr = @ptrCast(val);
-    //        break :blk result;
-    //    } else |_| return 1;
-    //};
-    
-    //TODO test if this works
-    json.* = @ptrCast(allocator.alloc(anyopaque, size * nmemb) catch return 0);
-    
-    std.mem.copyForwards(anyopaque, json.*[0..nmemb], data);
-    return size * nmemb;
-}
+const Callback_data = extern struct {
+    data: [*]u8,
+    len: usize
+};
 
 fn cycleu_init() bool {
     _ = c.curl_global_init(c.CURL_GLOBAL_DEFAULT);
@@ -181,94 +170,137 @@ fn cycleu_init() bool {
     };
 
     _ = c.curl_easy_setopt(curl, c.CURLOPT_FOLLOWLOCATION, @as(u8, 1));
+    _ = c.curl_easy_setopt(curl, c.CURLOPT_USERAGENT, "curl/8.13.0");
     _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEFUNCTION, receive_json);
 
     return true;
 }
 
-// TODO ASK what does this function do and return?
-fn fetch_link(url: char_ptr) char_ptr {
+fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *void_ptr) callconv(.C) usize {
+    if (size != @sizeOf(u8)) {
+        print("ERROR: We did not receive json data from curl aka cycleball.eu\n", .{});
+        return 0;
+    }
+    const out = @as(*Callback_data, @ptrCast(dest));
 
-    var json: char_ptr = undefined;
+    const mem = allocator.alloc(u8, size*nmemb) catch return 0;
+    std.mem.copyForwards(u8, mem, @as([*]const u8, @ptrCast(src))[0..size*nmemb]);
+
+    out.*.data = mem.ptr;
+    out.*.len = nmemb;
+
+    return size * nmemb;
+}
+
+// TODO ASK what does this function do and return?
+fn fetch_url(url: char_ptr) []u8 {
+
+    var callback_data: Callback_data = undefined;
     _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url);
-    _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, @as(void_ptr, @ptrCast(&json)));
+    _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &callback_data);
 
     const ret_code = c.curl_easy_perform(curl);
     if (ret_code != c.CURLE_OK) {
-        print("ERROR: Failed fetching JSON!: %s\n", .{c.curl_easy_strerror(ret_code)});
-        return "";
+        print("ERROR: Failed fetching JSON!: {s}\n", .{c.curl_easy_strerror(ret_code)});
+        return undefined;
     }
 
+    const json: []u8 = callback_data.data[0..callback_data.len];
+    //allocator.free(callback_data.data);
+
+    //TODO FINAL remove debug statement
+    print("JSON RECEIVED: {s}", .{json});
     return json;
 }
-
 
 export fn cycleu_deinit() void {
     c.curl_easy_cleanup(curl);
     c.curl_global_cleanup();
 }
 
+
 export fn cycleu_fetch_association(
-    association: *Associations,
+    association: *Association,
+    association_code: Associations,
     recursive: bool,
-) Association {
-    if (curl == null) _ = if(!cycleu_init()) return 0;
-    const url = "https://";
-    //TODO const url = "https://" ++ AssociationsCode[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
-    const json_str: char_ptr = fetch_link(url);
-    defer allocator.free(json_str);
+) FetchStatus {
+    if (curl == null) _ = if(!cycleu_init()) return FetchStatus.Curl;
+    const url_prefix = UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)];
+    const association_string = AssociationsCode[@intFromEnum(association_code)];
+    //const url = url_prefix ++ association_string ++ UrlBase ++ "leagues" + UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)];
+    // TODO STARTHERE make this work. It expects slices, we give c char_ptr
+    const url =
+        //UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++
+        url_prefix ++
+        //AssociationsCode[@intFromEnum(association_code)] ++
+        association_string ++
+        UrlBase ++ "leagues";
+
+    const json_str: []const u8 = fetch_url(url);
+    print("SUCCESS: Received Association:\n{s}", .{json_str});
 
     _ = recursive;
     _ = association;
     return undefined;
 }
 
-export fn cycleu_fetch_league(
-    association_name_short: char_ptr,
-    league_name: char_ptr,
-    recursive: bool
-) League {
-    if (curl == null) _ = cycleu_init();
-    //TODO league name could contain whitespaces!
-    const url_general = "https://";
-    // TODO const url_general = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name;
-    const url_ranking = url_general ++ "/ranking";
-    const url_teams = url_general ++ "/teams";
-    _ = url_ranking;
-    _ = url_teams;
-    _ = recursive;
-    _ = association_name_short;
-    _ = league_name;
-    return undefined;
-}
+//export fn cycleu_fetch_league(
+//    league: *League,
+//    association_name_short: char_ptr,
+//    league_name: char_ptr,
+//    recursive: bool
+//) FetchStatus {
+//    if (curl == null) _ = cycleu_init();
+//    //TODO league name could contain whitespaces!
+//    const url_general = "https://";
+//    // TODO const url_general = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name;
+//    const url_ranking = url_general ++ "/ranking";
+//    const url_teams = url_general ++ "/teams";
+//    _ = url_ranking;
+//    _ = url_teams;
+//    _ = recursive;
+//    _ = association_name_short;
+//    _ = league_name;
+//    return undefined;
+//}
+//
+//export fn cycleu_fetch_matchday(
+//    matchday: *Matchday,
+//    association_name_short: char_ptr,
+//    league_name_short: char_ptr,
+//    number: u8
+//) FetchStatus {
+//    if (curl == null) _ = cycleu_init();
+//    const url_matchday = "https://";
+//    // TODO const url_matchday = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name_short ++ "/matchdays/" ++ number;
+//    _ = url_matchday;
+//    _ = association_name_short;
+//    _ = league_name_short;
+//    _ = number;
+//    return undefined;
+//}
+//
+//export fn cycleu_write_result(
+//    game: Game,
+//    game_number: u8,
+//    league_name_short: char_ptr,
+//    association_name_short: char_ptr
+//) FetchStatus {
+//    if (curl == null)
+//        if (!cycleu_init())
+//            return false;
+//    _ = game;
+//    _ = game_number;
+//    _ = league_name_short;
+//    _ = association_name_short;
+//    return true;
+//}
 
-export fn cycleu_fetch_matchday(
-    association_name_short: char_ptr,
-    league_name_short: char_ptr,
-    number: u8
-) Matchday {
-    if (curl == null) _ = cycleu_init();
-    const url_matchday = "https://";
-    // TODO const url_matchday = "https://" ++ association_name_short ++ ".cycleball.eu/api/leagues/" ++ league_name_short ++ "/matchdays/" ++ number;
-    _ = url_matchday;
-    _ = association_name_short;
-    _ = league_name_short;
-    _ = number;
-    return undefined;
-}
+pub fn main() !void {
+    _ = cycleu_init();
+    //_ = fetch_url("https://de.cycleball.eu/api/leagues");
+    const ass_decoy: *Association = undefined;
+    _ = cycleu_fetch_association(ass_decoy, Associations.Deutschland, false);
 
-export fn cycleu_write_result(
-    game: Game,
-    game_number: u8,
-    league_name_short: char_ptr,
-    association_name_short: char_ptr
-) bool {
-    if (curl == null)
-        if (!cycleu_init())
-            return false;
-    _ = game;
-    _ = game_number;
-    _ = league_name_short;
-    _ = association_name_short;
-    return true;
+    _ = cycleu_deinit();
 }

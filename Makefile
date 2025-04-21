@@ -22,3 +22,13 @@ debug:
 		-I /usr/include \
 		-lc \
 		$(SRC)
+
+test:
+	zig build-exe \
+		--name $(NAME) \
+		-target native-native-gnu \
+		-I /usr/include \
+		-L /usr/lib \
+		-lc \
+		-lcurl \
+		$(SRC)
