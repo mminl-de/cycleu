@@ -26,7 +26,7 @@ var curl: ?*c.CURL = null;
 const Associations = enum(u8) {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
 const AssociationsCode = [_]char_ptr {"de", "by", "bb", "bw", "he", "rp"};
 
-const AccessError = error{AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown};
+const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown};
 
 const Association = extern struct {
     name_short: char_ptr,
@@ -155,21 +155,25 @@ const Ranking = extern struct {
 };
 
 fn receive_json(data: void_ptr, size: usize, nmemb: usize, json: *void_ptr) usize {
-    if (nmemb != @sizeOf(u8)) {
+    if (size != @sizeOf(u8)) {
         print("ERROR: We did not receive json data from curl aka cycleball.eu\n", .{});
-        return 1;
+        return 0;
     }
-    json.* = blk: {
-        if (allocator.alloc(anyopaque, size)) |val| {
-            const result: void_ptr = @ptrCast(val);
-            break :blk result;
-        } else |_| return 1;
-    };
-    const json_slice: []anyopaque = @ptrCast(json.*);
-    std.mem.copyForwards(anyopaque, json_slice, data);
+    //json.* = blk: {
+    //    if (allocator.alloc(anyopaque, size)) |val| {
+    //        const result: void_ptr = @ptrCast(val);
+    //        break :blk result;
+    //    } else |_| return 1;
+    //};
+    
+    //TODO test if this works
+    json.* = @ptrCast(allocator.alloc(anyopaque, size * nmemb) catch return 0);
+    
+    std.mem.copyForwards(anyopaque, json.*[0..nmemb], data);
+    return size * nmemb;
 }
 
-export fn cycleu_init() bool {
+fn cycleu_init() bool {
     _ = c.curl_global_init(c.CURL_GLOBAL_DEFAULT);
     curl = c.curl_easy_init() orelse {
         print("ERROR: cURL is striking. Come back tomorrow!\n", .{});
@@ -183,10 +187,11 @@ export fn cycleu_init() bool {
 }
 
 // TODO ASK what does this function do and return?
-fn fetch_link(link: char_ptr) char_ptr {
+fn fetch_link(url: char_ptr) char_ptr {
+
     var json: char_ptr = undefined;
-    _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, link);
-    _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &json);
+    _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url);
+    _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, @as(void_ptr, @ptrCast(&json)));
 
     const ret_code = c.curl_easy_perform(curl);
     if (ret_code != c.CURLE_OK) {
@@ -197,21 +202,22 @@ fn fetch_link(link: char_ptr) char_ptr {
     return json;
 }
 
+
 export fn cycleu_deinit() void {
     c.curl_easy_cleanup(curl);
     c.curl_global_cleanup();
 }
 
-export fn cycleu_fetch_associations(
-    association: Associations,
-    recursive: bool
+export fn cycleu_fetch_association(
+    association: *Associations,
+    recursive: bool,
 ) Association {
-    if (curl == null) _ = cycleu_init();
+    if (curl == null) _ = if(!cycleu_init()) return 0;
     const url = "https://";
     //TODO const url = "https://" ++ AssociationsCode[@intFromEnum(association)] ++ ".cycleball.eu/api/leagues";
     const json_str: char_ptr = fetch_link(url);
+    defer allocator.free(json_str);
 
-    _ = json_str;
     _ = recursive;
     _ = association;
     return undefined;
