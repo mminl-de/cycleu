@@ -226,16 +226,67 @@ export fn cycleu_fetch_association(
         UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++ 
         AssociationsCode[@intFromEnum(association_code)] ++ 
         "." ++ UrlBase ++ "/leagues";
+    const url_leagues = url ++ "/leagues";
+    const url_clubs = url ++ "/clubs";
 
-    var json_str: []u8 = undefined;
-    const ret_val = fetch_url(url, &json_str);
+    var json_leagues: []u8 = undefined;
+    var ret_val = fetch_url(url_leagues, &json_leagues);
     if(ret_val != FetchStatus.Ok){
-        print("failed to fetch association {s}:(", .{@tagName(ret_val)});
+        print("failed to fetch association leagues {s} :(", .{@tagName(ret_val)});
         return ret_val;
     }
-    defer allocator.free(json_str);
+    defer allocator.free(json_leagues);
+
+    var json_clubs: []u8 = undefined;
+    ret_val = fetch_url(url_clubs, &json_clubs);
+    if(ret_val != FetchStatus.Ok){
+        print("failed to fetch association clubs {s} :(", .{@tagName(ret_val)});
+        return ret_val;
+    }
+    defer allocator.free(json_leagues);
 
     //TODO parse json into leagues
+    //var tree = std.json.Parser
+    const struct_leagues = struct {
+        leagues: []struct {
+            shortName: []const u8,
+            longName: []const u8,
+            hasNonCompetitive: bool,
+            season: []const u8,
+            manager: struct {
+                name: []const u8,
+                email: []const u8,
+                street: []const u8,
+                zip: []const u8,
+                city: []const u8,
+                phone: []const u8
+            },
+            rules: [][]const u8,
+            lastImport: []const u8
+        }
+    };
+
+    const struct_clubs = struct {
+        clubs: []struct {
+            name: []const u8,
+            city: []const u8,
+            contact: struct {
+                name: []const u8,
+                email: []const u8,
+                street: []const u8,
+                zip: []const u8,
+                city: []const u8,
+                phone: []const u8
+            },
+            gyms: []struct {
+                name: []const u8,
+                street: []const u8,
+                zip: []const u8,
+                city: []const u8,
+                phone: []const u8
+            }
+        }
+    };
 
     association.name_short = AssociationsCode[@intFromEnum(association_code)];
     association.name_long = "UNKNOWN"; //TODO
