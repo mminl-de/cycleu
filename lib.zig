@@ -25,7 +25,7 @@ const UrlBase = "cycleball.eu/api";
 const Associations = enum(u8) {Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz};
 const AssociationsCode = [_]*const [2:0]u8{"de", "by", "bb", "bw", "he", "rp"};
 
-const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown, OutOfMemory};
+const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, Curl, Unknown, OutOfMemory, JsonMisformated};
 
 const Association = extern struct {
     name_short: char_ptr,
@@ -153,13 +153,13 @@ const Ranking = extern struct {
     rank_n: u8
 };
 
-const Callback_data = extern struct {
-    data: [*]u8,
+const Callback_data = struct {
+    data: []u8,
     len: usize
 };
 
 export fn cycleu_init() callconv(.C) bool {
-    _ = c.curl_global_init(c.CURL_GLOBAL_DEFAULT);
+    _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
     curl = c.curl_easy_init() orelse {
         print("ERROR: cURL is striking. Come back tomorrow!\n", .{});
         return false;
@@ -172,19 +172,26 @@ export fn cycleu_init() callconv(.C) bool {
     return true;
 }
 
-fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *void_ptr) callconv(.C) usize {
+fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *[]u8) callconv(.C) usize {
     if (size != @sizeOf(u8)) {
         print("ERROR: We did not receive json data from curl aka cycleball.eu\n", .{});
         return 0;
     }
-    const out = @as(*Callback_data, @ptrCast(dest));
+    //const out = @as(*Callback_data, @ptrCast(dest));
 
     // TODO MEMORY free
-    const mem = allocator.alloc(u8, size*nmemb) catch return 0;
-    std.mem.copyForwards(u8, mem, @as([*]const u8, @ptrCast(src))[0..size*nmemb]);
+    //const mem = allocator.alloc(u8, size*nmemb) catch return 0;
+    //std.mem.copyForwards(u8, mem, @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    
+    //out.*.data = allocator.alloc(u8, size*nmemb) catch return 0;
+    //std.mem.copyForwards(u8, out.*.data, @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    
+    dest.* = allocator.alloc(u8, size*nmemb) catch return 0;
+    //std.mem.copyForwards(u8, dest.*, @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    std.mem.copyForwards(u8, dest.*, @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    dest.len = nmemb;
 
-    out.*.data = mem.ptr;
-    out.*.len = nmemb;
+    print("SUCCESS: Received Association League (RECEIVE_JSON):\n{s}\n", .{dest.*});
 
     return size * nmemb;
 }
@@ -192,9 +199,12 @@ fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *void_ptr) callc
 // TODO ASK what does this function do and return?
 fn fetch_url(url: char_ptr, dest: *[]u8) callconv(.C) FetchStatus {
 
-    var callback_data: Callback_data = undefined;
+    //var callback_data: Callback_data = undefined;
+    var callback_data: []u8 = undefined;
     _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url);
+    //_ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &callback_data);
     _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &callback_data);
+
 
     print("DEBUG: fetching url {s}\n", .{url});
 
@@ -204,12 +214,16 @@ fn fetch_url(url: char_ptr, dest: *[]u8) callconv(.C) FetchStatus {
         print("ERROR: Failed fetching JSON!\nURL: {s}\nError: {s}\n", .{url, c.curl_easy_strerror(ret_code)});
         return FetchStatus.Unknown;
     }
+    //print("SUCCESS: Received Association League (FETCH_URL):\n{s}\n", .{callback_data.data});
+    print("SUCCESS: Received Association League (FETCH_URL):\n{s}\n", .{callback_data});
 
-    dest.* = callback_data.data[0..callback_data.len];
+    //dest.* = callback_data.data;
+    dest.* = callback_data;
+    print("SUCCESS: Received Association League (FETCH_URL 2):\n{s}\n", .{dest.*});
     return FetchStatus.Ok;
 }
 
-export fn cycleu_deinit() void {
+export fn cycleu_deinit() callconv(.C) void {
     c.curl_easy_cleanup(curl);
     c.curl_global_cleanup();
 }
@@ -225,7 +239,7 @@ export fn cycleu_fetch_association(
     const url =
         UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++ 
         AssociationsCode[@intFromEnum(association_code)] ++ 
-        "." ++ UrlBase ++ "/leagues";
+        "." ++ UrlBase;
     const url_leagues = url ++ "/leagues";
     const url_clubs = url ++ "/clubs";
 
@@ -237,6 +251,8 @@ export fn cycleu_fetch_association(
     }
     defer allocator.free(json_leagues);
 
+    print("SUCCESS: Received Association League (FETCH_ASSOCIATION):\n{s}\n", .{json_leagues});
+
     var json_clubs: []u8 = undefined;
     ret_val = fetch_url(url_clubs, &json_clubs);
     if(ret_val != FetchStatus.Ok){
@@ -244,6 +260,8 @@ export fn cycleu_fetch_association(
         return ret_val;
     }
     defer allocator.free(json_leagues);
+
+    print("SUCCESS: Received Association clubs:\n", .{});
 
     //TODO parse json into leagues
     //var tree = std.json.Parser
@@ -266,6 +284,13 @@ export fn cycleu_fetch_association(
         }
     };
 
+
+    const leagues_parsed = std.json.parseFromSlice(struct_leagues, allocator, json_leagues, .{.ignore_unknown_fields = true}) catch |err| {
+        print("JSON for Association leagues are wrong format: {s}", .{@errorName(err)});
+        return FetchStatus.JsonMisformated;
+    };
+    defer leagues_parsed.deinit();
+
     const struct_clubs = struct {
         clubs: []struct {
             name: []const u8,
@@ -287,11 +312,12 @@ export fn cycleu_fetch_association(
             }
         }
     };
+    _ = struct_clubs;
 
     association.name_short = AssociationsCode[@intFromEnum(association_code)];
     association.name_long = "UNKNOWN"; //TODO
 
-    print("SUCCESS: Received Association:\n{s}", .{json_str});
+    //print("SUCCESS: Received Association Clubs: \n{s}", .{json_clubs});
 
     _ = recursive;
     return undefined;
@@ -433,9 +459,13 @@ pub fn main() !void {
     defer cycleu_deinit();
 
     var ass_decoy: Association = undefined;
-    var league_decoy: League = undefined;
-    var matchday_decoy: Matchday = undefined;
-    _ = cycleu_fetch_association(&ass_decoy, Associations.Deutschland, false);
-    _ = cycleu_fetch_league(&league_decoy, Associations.Deutschland, "b11", false);
-    _ = cycleu_fetch_matchday(&matchday_decoy, Associations.Deutschland, "b11", 2);
+    //var league_decoy: League = undefined;
+    //var matchday_decoy: Matchday = undefined;
+    const ret_val = cycleu_fetch_association(&ass_decoy, Associations.Deutschland, false);
+    if(ret_val != FetchStatus.Ok){
+        if(ret_val == FetchStatus.JsonMisformated)
+            print("Json was misformated. Fuck you", .{});
+    }
+    //_ = cycleu_fetch_league(&league_decoy, Associations.Deutschland, "b11", false);
+    //_ = cycleu_fetch_matchday(&matchday_decoy, Associations.Deutschland, "b11", 2);
 }
