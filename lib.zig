@@ -158,7 +158,7 @@ const Callback_data = extern struct {
     len: usize
 };
 
-fn cycleu_init() bool {
+export fn cycleu_init() callconv(.C) bool {
     _ = c.curl_global_init(c.CURL_GLOBAL_DEFAULT);
     curl = c.curl_easy_init() orelse {
         print("ERROR: cURL is striking. Come back tomorrow!\n", .{});
@@ -179,6 +179,7 @@ fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *void_ptr) callc
     }
     const out = @as(*Callback_data, @ptrCast(dest));
 
+    // TODO MEMORY free
     const mem = allocator.alloc(u8, size*nmemb) catch return 0;
     std.mem.copyForwards(u8, mem, @as([*]const u8, @ptrCast(src))[0..size*nmemb]);
 
@@ -189,7 +190,7 @@ fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *void_ptr) callc
 }
 
 // TODO ASK what does this function do and return?
-fn fetch_url(url: char_ptr, dest: *[]u8) FetchStatus {
+fn fetch_url(url: char_ptr, dest: *[]u8) callconv(.C) FetchStatus {
 
     var callback_data: Callback_data = undefined;
     _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url);
@@ -218,8 +219,9 @@ export fn cycleu_fetch_association(
     association: *Association,
     association_code: Associations,
     recursive: bool,
-) FetchStatus {
+) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.Curl;
+
     const url =
         UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++ 
         AssociationsCode[@intFromEnum(association_code)] ++ 
@@ -249,8 +251,9 @@ export fn cycleu_fetch_league(
     association_code: Associations,
     league_name: char_ptr,
     recursive: bool
-) FetchStatus {
+) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.Curl;
+
     //TODO league name could contain whitespaces!
     const league_slice = league_name[0..std.mem.len(league_name)];
     const url_general = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}", .{
@@ -271,6 +274,7 @@ export fn cycleu_fetch_league(
         print("failed to fetch league general infos :(", .{});
         return ret_val;
     }
+    // TODO ASK why freeing?
     defer allocator.free(json_general);
 
     print("SUCCESS: LEAGUE: Received json_general:\n{s}", .{json_general});
@@ -281,6 +285,7 @@ export fn cycleu_fetch_league(
         print("failed to fetch league ranking:(", .{});
         return ret_val;
     }
+    // TODO ASK why freeing?
     defer allocator.free(json_ranking);
 
     print("SUCCESS: LEAGUE: Received json_ranking:\n{s}", .{json_ranking});
@@ -291,6 +296,7 @@ export fn cycleu_fetch_league(
         print("failed to fetch league teams:(", .{});
         return ret_val;
     }
+    // TODO ASK why freeing?
     defer allocator.free(json_teams);
 
     print("SUCCESS: LEAGUE: Received json_teams:\n{s}", .{json_teams});
@@ -307,8 +313,9 @@ export fn cycleu_fetch_matchday(
     association_code: Associations,
     league_name: char_ptr,
     number: u8
-) FetchStatus {
+) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.Curl;
+
     const url_matchday = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}/matchdays/{d}", .{
         UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)],
         AssociationsCode[@intFromEnum(association_code)],
@@ -322,6 +329,7 @@ export fn cycleu_fetch_matchday(
         print("failed to fetch matchday:(", .{});
         return ret_val;
     }
+    // TODO ASK why freeing
     defer allocator.free(json_matchday);
 
     print("SUCCESS: Received json_matchday:\n{s}", .{json_matchday});
@@ -335,7 +343,7 @@ export fn cycleu_write_result(
     game_number: u8,
     league_name_short: char_ptr,
     association_name_short: char_ptr
-) FetchStatus {
+) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.Curl;
 
     //TODO make json from input
@@ -368,8 +376,10 @@ export fn cycleu_write_result(
     return FetchStatus.Ok;
 }
 
+// TODO FINAL write proper tests
 pub fn main() !void {
     _ = cycleu_init();
+    defer cycleu_deinit();
 
     var ass_decoy: Association = undefined;
     var league_decoy: League = undefined;
@@ -377,6 +387,4 @@ pub fn main() !void {
     _ = cycleu_fetch_association(&ass_decoy, Associations.Deutschland, false);
     _ = cycleu_fetch_league(&league_decoy, Associations.Deutschland, "b11", false);
     _ = cycleu_fetch_matchday(&matchday_decoy, Associations.Deutschland, "b11", 2);
-
-    _ = cycleu_deinit();
 }
