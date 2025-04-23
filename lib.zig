@@ -5,12 +5,13 @@
 const std = @import("std");
 const c = @cImport(@cInclude("curl/curl.h"));
 
+const allocator: std.mem.Allocator = std.heap.c_allocator;
+
 const char_ptr = [*:0]const u8;
 const void_ptr = ?*anyopaque;
 const time_t = i64;
 const print = std.debug.print;
 
-const allocator: std.mem.Allocator = std.heap.c_allocator;
 
 //TODO can we make this pub or do we really have to write a function for this
 var CYCLEU_USE_CACHE: bool = false;
@@ -30,10 +31,10 @@ const FetchStatus = enum(u8) {Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Int
 const Association = extern struct {
     name_short: char_ptr,
     name_long: char_ptr,
-    leagues: *const League,
-    league_n: u8,
-    clubs: *const Club,
-    club_n: u8
+    leagues: [*]const League,
+    league_n: u32,
+    clubs: [*]const Club,
+    club_n: u32
 };
 
 const League = extern struct {
@@ -53,7 +54,7 @@ const League = extern struct {
         phone: char_ptr
     },
     ranking: Ranking,
-    rules: *const char_ptr,
+    rules: [*]const char_ptr,
     rule_n: u8,
     last_update: time_t,
 };
@@ -126,7 +127,7 @@ const Club = extern struct {
             street: char_ptr
         }
     },
-    gyms: *const Gym,
+    gyms: [*]const Gym,
     gym_n: u8
 };
 
@@ -153,10 +154,19 @@ const Ranking = extern struct {
     rank_n: u8
 };
 
-const Callback_data = struct {
-    data: []u8,
-    len: usize
-};
+fn slice_deepcopy_to_charptr(input: []const u8) ![*:0]const u8 {
+    var buffer = try allocator.alloc(u8, input.len + 1);
+    std.mem.copyForwards(u8, buffer[0..input.len], input);
+    buffer[input.len] = 0;
+    return @as([*:0]const u8, @ptrCast(buffer.ptr));
+}
+
+fn slice_array_deepcopy_to_charptr(input: []const []const u8) ![*][*:0]const u8 {
+    var buffer = try allocator.alloc([*:0]const u8, input.len);
+    for(input, 0..) |str, i|
+        buffer[i] = try slice_deepcopy_to_charptr(str);
+    return buffer.ptr;
+}
 
 export fn cycleu_init() callconv(.C) bool {
     _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
@@ -177,21 +187,16 @@ fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *[]u8) callconv(
         print("ERROR: We did not receive json data from curl aka cycleball.eu\n", .{});
         return 0;
     }
-    //const out = @as(*Callback_data, @ptrCast(dest));
-
-    // TODO MEMORY free
-    //const mem = allocator.alloc(u8, size*nmemb) catch return 0;
-    //std.mem.copyForwards(u8, mem, @as([*]const u8, @ptrCast(src))[0..nmemb]);
     
-    //out.*.data = allocator.alloc(u8, size*nmemb) catch return 0;
-    //std.mem.copyForwards(u8, out.*.data, @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    //TODO make allocator dynamic if possible
+    const new_data = allocator.alloc(u8, dest.len + nmemb) catch return 0;
+    std.mem.copyForwards(u8, new_data[0..dest.len], dest.*);
+    std.mem.copyForwards(u8, new_data[dest.len..], @as([*]const u8, @ptrCast(src))[0..nmemb]);
+    if(dest.len > 0) allocator.free(dest.*);
+    dest.ptr = new_data.ptr;
+    dest.len = new_data.len;
     
-    dest.* = allocator.alloc(u8, size*nmemb) catch return 0;
-    //std.mem.copyForwards(u8, dest.*, @as([*]const u8, @ptrCast(src))[0..nmemb]);
-    std.mem.copyForwards(u8, dest.*, @as([*]const u8, @ptrCast(src))[0..nmemb]);
-    dest.len = nmemb;
-
-    print("SUCCESS: Received Association League (RECEIVE_JSON):\n{s}\n", .{dest.*});
+    //print("SUCCESS: Received Association League (RECEIVE_JSON):\n{s}\n", .{dest.*});
 
     return size * nmemb;
 }
@@ -199,12 +204,9 @@ fn receive_json(src: void_ptr, size: usize, nmemb: usize, dest: *[]u8) callconv(
 // TODO ASK what does this function do and return?
 fn fetch_url(url: char_ptr, dest: *[]u8) callconv(.C) FetchStatus {
 
-    //var callback_data: Callback_data = undefined;
-    var callback_data: []u8 = undefined;
+    var callback_data: []u8 = &[_]u8{};
     _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url);
-    //_ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &callback_data);
     _ = c.curl_easy_setopt(curl, c.CURLOPT_WRITEDATA, &callback_data);
-
 
     print("DEBUG: fetching url {s}\n", .{url});
 
@@ -214,12 +216,9 @@ fn fetch_url(url: char_ptr, dest: *[]u8) callconv(.C) FetchStatus {
         print("ERROR: Failed fetching JSON!\nURL: {s}\nError: {s}\n", .{url, c.curl_easy_strerror(ret_code)});
         return FetchStatus.Unknown;
     }
-    //print("SUCCESS: Received Association League (FETCH_URL):\n{s}\n", .{callback_data.data});
-    print("SUCCESS: Received Association League (FETCH_URL):\n{s}\n", .{callback_data});
 
-    //dest.* = callback_data.data;
     dest.* = callback_data;
-    print("SUCCESS: Received Association League (FETCH_URL 2):\n{s}\n", .{dest.*});
+    //print("SUCCESS: Received Association League (FETCH_URL 2):\n{s}\n", .{dest.*});
     return FetchStatus.Ok;
 }
 
@@ -251,7 +250,7 @@ export fn cycleu_fetch_association(
     }
     defer allocator.free(json_leagues);
 
-    print("SUCCESS: Received Association League (FETCH_ASSOCIATION):\n{s}\n", .{json_leagues});
+    //print("SUCCESS: Received Association League (FETCH_ASSOCIATION):\n{s}\n", .{json_leagues});
 
     var json_clubs: []u8 = undefined;
     ret_val = fetch_url(url_clubs, &json_clubs);
@@ -259,65 +258,137 @@ export fn cycleu_fetch_association(
         print("failed to fetch association clubs {s} :(", .{@tagName(ret_val)});
         return ret_val;
     }
-    defer allocator.free(json_leagues);
+    defer allocator.free(json_clubs);
 
     print("SUCCESS: Received Association clubs:\n", .{});
 
     //TODO parse json into leagues
     //var tree = std.json.Parser
     const struct_leagues = struct {
-        leagues: []struct {
-            shortName: []const u8,
-            longName: []const u8,
-            hasNonCompetitive: bool,
-            season: []const u8,
-            manager: struct {
-                name: []const u8,
-                email: []const u8,
-                street: []const u8,
-                zip: []const u8,
-                city: []const u8,
-                phone: []const u8
-            },
-            rules: [][]const u8,
-            lastImport: []const u8
-        }
+        shortName: []const u8,
+        longName: []const u8,
+        hasNonCompetitive: bool,
+        season: []const u8,
+        manager: struct {
+            name: []const u8,
+            email: []const u8,
+            street: []const u8,
+            zip: []const u8,
+            city: []const u8,
+            phone: []const u8
+        },
+        rules: [][]const u8,
+        lastImport: []const u8
     };
 
-
-    const leagues_parsed = std.json.parseFromSlice(struct_leagues, allocator, json_leagues, .{.ignore_unknown_fields = true}) catch |err| {
-        print("JSON for Association leagues are wrong format: {s}", .{@errorName(err)});
+    const leagues_parsed = std.json.parseFromSlice([]struct_leagues, allocator, json_leagues, .{.ignore_unknown_fields = true}) catch |err| {
+        print("JSON for Association leagues are wrong format: {s}\n", .{@errorName(err)});
         return FetchStatus.JsonMisformated;
     };
     defer leagues_parsed.deinit();
 
-    const struct_clubs = struct {
-        clubs: []struct {
-            name: []const u8,
-            city: []const u8,
-            contact: struct {
-                name: []const u8,
-                email: []const u8,
-                street: []const u8,
-                zip: []const u8,
-                city: []const u8,
-                phone: []const u8
+    var leagues = allocator.alloc(League, leagues_parsed.value.len) catch return FetchStatus.OutOfMemory;
+    for(0.., leagues_parsed.value) |i, league_parsed| {
+        const zipval: u32 = std.fmt.parseInt(u32, league_parsed.manager.zip, 10) catch 0;
+        leagues[i] = .{
+            .association = association,
+            .name_short = slice_deepcopy_to_charptr(league_parsed.shortName) catch return FetchStatus.OutOfMemory,
+            .name_long = slice_deepcopy_to_charptr(league_parsed.longName) catch return FetchStatus.OutOfMemory,
+            .competitive = !league_parsed.hasNonCompetitive,
+            .season = std.fmt.parseInt(u16, league_parsed.season, 10) catch return FetchStatus.JsonMisformated,
+            .manager = .{
+                .name = slice_deepcopy_to_charptr(league_parsed.manager.name) catch return FetchStatus.OutOfMemory,
+                .email = slice_deepcopy_to_charptr(league_parsed.manager.email) catch return FetchStatus.OutOfMemory,
+                .phone = slice_deepcopy_to_charptr(league_parsed.manager.phone) catch return FetchStatus.OutOfMemory,
+                .address = .{
+                    .city = slice_deepcopy_to_charptr(league_parsed.manager.city) catch return FetchStatus.OutOfMemory,
+                    .zip = zipval,
+                    .street = slice_deepcopy_to_charptr(league_parsed.manager.street) catch return FetchStatus.OutOfMemory 
+                },
             },
-            gyms: []struct {
-                name: []const u8,
-                street: []const u8,
-                zip: []const u8,
-                city: []const u8,
-                phone: []const u8
-            }
+            .ranking = undefined,
+            .rules = slice_array_deepcopy_to_charptr(league_parsed.rules) catch return FetchStatus.OutOfMemory, //TODO This cant possibly work
+            .rule_n = std.math.cast(u8, league_parsed.rules.len) orelse return FetchStatus.JsonMisformated, //TODO probably isnt working as well
+            .last_update = 0
+            // TODO .last_update = league_parsed.lastImport
+        };
+    }
+
+    const struct_clubs = struct {
+        name: []const u8,
+        city: []const u8,
+        contact: struct {
+            name: []const u8,
+            email: []const u8,
+            street: []const u8,
+            zip: []const u8,
+            city: []const u8,
+            phone: []const u8
+        },
+        gyms: []struct {
+            name: []const u8,
+            street: []const u8,
+            zip: []const u8,
+            city: []const u8,
+            phone: []const u8
         }
     };
-    _ = struct_clubs;
 
-    association.name_short = AssociationsCode[@intFromEnum(association_code)];
-    association.name_long = "UNKNOWN"; //TODO
+    const clubs_parsed = std.json.parseFromSlice([]struct_clubs, allocator, json_clubs, .{.ignore_unknown_fields = true}) catch |err| {
+        print("JSON for Association Clubs are wrong format: {s}\n", .{@errorName(err)});
+        return FetchStatus.JsonMisformated;
+    };
+    defer clubs_parsed.deinit();
+
+
+    var clubs = allocator.alloc(Club, clubs_parsed.value.len) catch return FetchStatus.OutOfMemory;
+    for(clubs_parsed.value, 0..) |club_parsed, i| {
+        const zipval: u32 = std.fmt.parseInt(u32, club_parsed.contact.zip, 10) catch 0;
+
+        const gyms = allocator.alloc(Gym, club_parsed.gyms.len) catch return FetchStatus.OutOfMemory;
+        for(club_parsed.gyms, 0..) |gym, j| {
+            const gym_zipval: u32 = std.fmt.parseInt(u32, gym.zip, 10) catch 0;
+            print("Gym ZIP: {s}, {d}\n", .{gym.zip, gym_zipval});
+            gyms[j] = .{
+                .club = &(clubs[i]), //TODO is this correct?
+                .name = slice_deepcopy_to_charptr(gym.name) catch return FetchStatus.OutOfMemory,
+                .phone = slice_deepcopy_to_charptr(gym.phone) catch return FetchStatus.OutOfMemory,
+                .address = .{
+                    .city = slice_deepcopy_to_charptr(gym.city) catch return FetchStatus.OutOfMemory,
+                    .zip = gym_zipval,
+                    .street = slice_deepcopy_to_charptr(gym.street) catch return FetchStatus.OutOfMemory
+                }
+            };
+        }
+
+        clubs[i] = .{
+            .name = slice_deepcopy_to_charptr(club_parsed.name) catch return FetchStatus.OutOfMemory,
+            .city = slice_deepcopy_to_charptr(club_parsed.city) catch return FetchStatus.OutOfMemory,
+            .contact = .{
+                .name = slice_deepcopy_to_charptr(club_parsed.contact.name) catch return FetchStatus.OutOfMemory,
+                .email = slice_deepcopy_to_charptr(club_parsed.contact.email) catch return FetchStatus.OutOfMemory,
+                .phone = slice_deepcopy_to_charptr(club_parsed.contact.phone) catch return FetchStatus.OutOfMemory,
+                .address = .{
+                    .city = slice_deepcopy_to_charptr(club_parsed.contact.city) catch return FetchStatus.OutOfMemory,
+                    .zip = zipval, 
+                    .street = slice_deepcopy_to_charptr(club_parsed.contact.street) catch return FetchStatus.OutOfMemory,
+                }
+            },
+            .gyms = gyms.ptr, //TODO is this correct?
+            .gym_n = std.math.cast(u8, club_parsed.gyms.len) orelse return FetchStatus.JsonMisformated
+        };
+    }
 
     //print("SUCCESS: Received Association Clubs: \n{s}", .{json_clubs});
+
+    association.* = .{
+        .name_short = AssociationsCode[@intFromEnum(association_code)],
+        .name_long = "UNKNOWN",
+        .leagues = leagues.ptr,
+        .league_n = std.math.cast(u32, leagues.len) orelse return FetchStatus.JsonMisformated,
+        .clubs = clubs.ptr,
+        .club_n = std.math.cast(u32, clubs.len) orelse return FetchStatus.JsonMisformated,
+    };
 
     _ = recursive;
     return undefined;
@@ -464,7 +535,7 @@ pub fn main() !void {
     const ret_val = cycleu_fetch_association(&ass_decoy, Associations.Deutschland, false);
     if(ret_val != FetchStatus.Ok){
         if(ret_val == FetchStatus.JsonMisformated)
-            print("Json was misformated. Fuck you", .{});
+            print("Json was misformated. Fuck you\n", .{});
     }
     //_ = cycleu_fetch_league(&league_decoy, Associations.Deutschland, "b11", false);
     //_ = cycleu_fetch_matchday(&matchday_decoy, Associations.Deutschland, "b11", 2);
