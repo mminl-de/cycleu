@@ -15,6 +15,34 @@ TODO
 ### Examples
 TODO
 
+### State
+- cycleu_fetch_association
+    - [x] working 
+    - [ ] feature complete (json to struct support)
+    - [x] not leaking
+- cycleu_fetch_league
+    - [x] working
+    - [ ] feature complete (json to struct support)
+    - [ ] not leaking
+- cycleu_fetch_matchday
+    - [x] working
+    - [ ] feature complete (json to struct support)
+    - [ ] not leaking
+- cycleu_fetch_club
+    - [ ] working
+    - [ ] feature complete (json to struct support)
+    - [ ] not leaking
+- cycleu_write_result
+    - [ ] working
+    - [ ] feature complete (json to struct support)
+    - [ ] not leaking
+#### TODO
+- support league names with spaces
+- fix memory leaks in fetch_league and fetch_matchday
+- write convertion function from json timestamp to time_t
+- support offline cache
+- Find API for associations
+
 ## cycleu
 > [!WARNING]
 > Work In Progress. This is not yet working!
@@ -40,3 +68,4 @@ We developed [Interscore](https://github.com/mminl-de/interscore), a scoreboard 
 
 1. To access them, calculate live tables and show the audience the course of the other matchday that is running besides the one we stream. This can be especially useful for the 1st and 2nd Bundesliga.
 2. To automatically write the results of the event to cycleball.eu.
+
