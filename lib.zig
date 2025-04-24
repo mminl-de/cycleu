@@ -5,7 +5,14 @@ const builtin = @import("builtin");
 const std = @import("std");
 const c = @cImport(@cInclude("curl/curl.h"));
 
-const allocator = if (builtin.is_test) std.testing.allocator else std.heap.c_allocator;
+// TODO BEGIN TEST
+const AllocatorType = enum(u8) { c, testing };
+
+// TODO const allocator = if (builtin.is_test) std.testing.allocator else std.heap.c_allocator;
+const allocator = if (builtin.is_test and @import("tests").allocator != .c)
+    std.testing.allocator
+    else std.heap.c_allocator;
+
 
 const char_ptr = [*:0]const u8;
 const void_ptr = ?*anyopaque;
@@ -17,21 +24,17 @@ const print = std.debug.print;
 //TODO Reverse engineer API for getting all available Associations
 const AssociationType = enum(u8) { Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz };
 const FetchStatus = enum(u8) { Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, CURL, OutOfMemory, JSONMisformated, Unknown };
-const UrlPrefix = enum(u8) { HTTPS, HTTP, FILE };
-const UrlPrefixCode = [_][]const u8{ "https://", "http://", "file://" }; // TODO CONSIDER file://
+const URLProtocol = enum(u8) { HTTPS, HTTP, FILE };
 
 const ASSOCIATION_CODES = [_]*const [2:0]u8{ "de", "by", "bb", "bw", "he", "rp" };
 const URL_BASE = "cycleball.eu/api";
+const URL_PROTOCOLS = [_][]const u8{ "https://", "http://", "file://" }; // TODO CONSIDER file://
 
-//TODO can we make this pub or do we really have to write a function for this
-// TODO ASK does the library really need to do this?
-var use_cache: bool = false;
 var curl: ?*c.CURL = null;
 
 const Association = extern struct {
     name_short: char_ptr,
     name_long: char_ptr,
-    // TODO ASK ... and slices are really impossible?
     leagues: [*]const League,
     league_n: u32,
     clubs: [*]const Club,
@@ -119,7 +122,6 @@ const Matchday = extern struct {
         for (self.teams[0..self.team_n]) |team| team.deinit();
         allocator.free(self.teams);
 
-        for (self.games[0..self.game_n]) |game| game.deinit();
         allocator.free(self.games);
     }
 };
@@ -127,7 +129,7 @@ const Matchday = extern struct {
 const Matchday_Team = extern struct {
     orig_team: *const Team,
     present: bool,
-    players: [*]const Matchday_Players,
+    players: [*]const Matchday_Player,
     player_n: u8,
 
     fn deinit(self: *const Matchday_Team) void {
@@ -136,11 +138,11 @@ const Matchday_Team = extern struct {
     }
 };
 
-const Matchday_Players = extern struct {
+const Matchday_Player = extern struct {
     player: Player,
     regular: bool,
 
-    fn deinit(self: *Matchday_Players) void {
+    fn deinit(self: *Matchday_Player) void {
         self.player.deinit();
     }
 };
@@ -153,16 +155,12 @@ const Game = extern struct {
     goals: extern struct {
         a: u8,
         b: u8,
-        // TODO ASK why is it signed?
-        half: extern struct { a: i8, b: i8 }
+        half: extern struct { a: i8, b: i8 } // -1 means unknown
     },
     is_writable: bool,
 
-    fn deinit(self: *const Game) void {
-        // TODO
-        _ = self;
-        return;
-    }
+    // There is deliberately no `deinit` function because
+    // these objects are allocated on the stack. :^)
 };
 
 const Team = extern struct {
@@ -259,7 +257,7 @@ export fn cycleu_fetch_association(
     if (curl == null) return FetchStatus.CURL;
 
     const url =
-        UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)] ++ 
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)] ++ 
         ASSOCIATION_CODES[@intFromEnum(association_code)] ++ 
         "." ++ URL_BASE;
     const url_leagues = url ++ "/leagues";
@@ -285,7 +283,7 @@ export fn cycleu_fetch_association(
 
     print("SUCCESS: Received Association clubs:\n", .{});
 
-    const struct_leagues = struct {
+    const _League = struct {
         shortName: []const u8,
         longName: []const u8,
         hasNonCompetitive: bool,
@@ -302,7 +300,7 @@ export fn cycleu_fetch_association(
         lastImport: []const u8
     };
 
-    const leagues_parsed = std.json.parseFromSlice([]struct_leagues, allocator, json_leagues, .{.ignore_unknown_fields = true}) catch |err| {
+    const leagues_parsed = std.json.parseFromSlice([]_League, allocator, json_leagues, .{.ignore_unknown_fields = true}) catch |err| {
         print("JSON for Association leagues are wrong format: {s}\n", .{@errorName(err)});
         return FetchStatus.JSONMisformated;
     };
@@ -432,7 +430,7 @@ export fn cycleu_fetch_league(
     //TODO league name could contain whitespaces!
     const league_slice = league_name[0..std.mem.len(league_name)];
     const url_general = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s} ", .{
-        UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)],
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
         ASSOCIATION_CODES[@intFromEnum(association_code)],
         URL_BASE, league_slice
     }) catch return FetchStatus.OutOfMemory;
@@ -460,7 +458,7 @@ export fn cycleu_fetch_league(
 
         print("SUCCESS: LEAGUE: Received json_general:\n{s}", .{json_general});
 
-        const struct_general = struct {
+        const _General = struct {
             shortName: []const u8,
             longName: []const u8,
             hasNonCompetitive: bool,
@@ -477,7 +475,7 @@ export fn cycleu_fetch_league(
             lastImport: []const u8
         };
 
-        const league_parsed_long = std.json.parseFromSlice(struct_general, allocator, json_general, .{.ignore_unknown_fields = true}) catch |err| {
+        const league_parsed_long = std.json.parseFromSlice(_General, allocator, json_general, .{.ignore_unknown_fields = true}) catch |err| {
             print("JSON for Leagues general info are wrong format: {s}\n", .{@errorName(err)});
             return FetchStatus.JSONMisformated;
         };
@@ -524,7 +522,7 @@ export fn cycleu_fetch_league(
     }
     defer allocator.free(json_teams);
 
-    const struct_team = struct {
+    const _Team = struct {
         id: []const u8,
         name: []const u8,
         clubName: []const u8,
@@ -538,7 +536,7 @@ export fn cycleu_fetch_league(
         }
     };
 
-    const teams_parsed = std.json.parseFromSlice([]struct_team, allocator, json_teams, .{.ignore_unknown_fields = true}) catch |err| {
+    const teams_parsed = std.json.parseFromSlice([]_Team, allocator, json_teams, .{.ignore_unknown_fields = true}) catch |err| {
         print("JSON for Leagues ranking are wrong format: {s}\n", .{@errorName(err)});
         return FetchStatus.JSONMisformated;
     };
@@ -572,10 +570,9 @@ export fn cycleu_fetch_league(
         print("failed to fetch league ranking:(", .{});
         return ret_val;
     }
-    // TODO ASK why freeing?
     defer allocator.free(json_ranking);
 
-    const struct_ranking = struct {
+    const _Ranking = struct {
         team: []const u8,
         games: usize,
         goalsPlus: usize,
@@ -585,7 +582,7 @@ export fn cycleu_fetch_league(
         rank: usize
     };
     
-    const ranking_parsed = std.json.parseFromSlice([]struct_ranking, allocator, json_ranking, .{.ignore_unknown_fields = true}) catch |err| {
+    const ranking_parsed = std.json.parseFromSlice([]_Ranking, allocator, json_ranking, .{.ignore_unknown_fields = true}) catch |err| {
         print("JSON for Leagues ranking are wrong format: {s}\n", .{@errorName(err)});
         return FetchStatus.JSONMisformated;
     };
@@ -593,7 +590,6 @@ export fn cycleu_fetch_league(
 
     var ranks = allocator.alloc(Rank, ranking_parsed.value.len) catch return FetchStatus.OutOfMemory;
     for (0.., ranking_parsed.value) |i, rank_parsed| {
-        // TODO ASK are all the new data types right? (i16 -> ?u8)
         var team_index: ?u8 = null;
         for (league.teams[0..league.team_n], 0..) |team, j| {
             print("{d}.) team.name: {s}, rank_parsed.team: {s}\n", .{j, team.name, rank_parsed.team});
@@ -637,7 +633,7 @@ export fn cycleu_fetch_matchday(
     if (curl == null) return FetchStatus.CURL;
 
     const url_matchday = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}/matchdays/{d}", .{
-        UrlPrefixCode[@intFromEnum(UrlPrefix.HTTPS)],
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
         ASSOCIATION_CODES[@intFromEnum(association_code)],
         URL_BASE, league_name, number
     }) catch return FetchStatus.OutOfMemory;
@@ -680,8 +676,8 @@ export fn cycleu_fetch_matchday(
             teamB: []const u8,
             goalsA: usize,
             goalsB: usize,
-            goalsAHalf: ?usize = null,
-            goalsBHalf: ?usize = null,
+            goalsAHalf: isize = -1,
+            goalsBHalf: isize = -1,
             state: []const u8
         },
         incidents: ?[]std.json.Value //TODO find out how incidents work
@@ -697,7 +693,7 @@ export fn cycleu_fetch_matchday(
 
     const teams = allocator.alloc(Matchday_Team, matchday_parsed.teams.len) catch return FetchStatus.OutOfMemory;
     for (0.., matchday_parsed.teams) |i, team| {
-        const players = allocator.alloc(Matchday_Players, matchday_parsed.teams.len) catch return FetchStatus.OutOfMemory;
+        const players = allocator.alloc(Matchday_Player, matchday_parsed.teams.len) catch return FetchStatus.OutOfMemory;
         for (0.., team.players) |j, player| {
             players[j] = .{
                 .player = .{
@@ -762,8 +758,8 @@ export fn cycleu_fetch_matchday(
                 .b = @intCast(game.goalsB),
                 .half = .{
                     // TODO these two fields arent used at all yet lol
-                    .a = @intCast(game.goalsAHalf.?),
-                    .b = @intCast(game.goalsBHalf.?)
+                    .a = @intCast(game.goalsAHalf),
+                    .b = @intCast(game.goalsBHalf)
                 }
             },
             .is_writable = is_writable
@@ -875,7 +871,6 @@ fn slice_array_deepcopy_to_charptr(input: []const []const u8) ![*][*:0]const u8 
     return buffer.ptr;
 }
 
-// TODO ASK what does this function do and return?
 fn fetch_url(url: []const u8, dest: *[]u8) FetchStatus {
     var callback_data: []u8 = &[_]u8{};
     _ = c.curl_easy_setopt(curl, c.CURLOPT_URL, url.ptr);
@@ -895,7 +890,7 @@ fn fetch_url(url: []const u8, dest: *[]u8) FetchStatus {
     return FetchStatus.Ok;
 }
 
-test {
+test "main" {
     _ = cycleu_init();
     defer cycleu_deinit();
 
