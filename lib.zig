@@ -370,7 +370,6 @@ export fn cycleu_fetch_association(
         const gyms = allocator.alloc(Gym, club_parsed.gyms.len) catch return FetchStatus.OutOfMemory;
         for (club_parsed.gyms, 0..) |gym, j| {
             const gym_zipval: u32 = std.fmt.parseInt(u32, gym.zip, 10) catch 0;
-            print("Gym ZIP: {s}, {d}\n", .{gym.zip, gym_zipval});
             gyms[j] = .{
                 .club = &(clubs[i]), //TODO is this correct?
                 .name = slice_deepcopy_to_charptr(gym.name) catch return FetchStatus.OutOfMemory,
@@ -421,11 +420,14 @@ export fn cycleu_fetch_association(
 export fn cycleu_fetch_league(
     league: *League,
     association_code: AssociationType,
-    league_name: char_ptr,
+    league_name_unescaped: char_ptr,
     base_infos_present: bool,
     recursive: bool
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
+
+    const league_name = c.curl_easy_escape(curl, league_name_unescaped, @intCast(std.mem.span(league_name_unescaped).len));
+    defer c.curl_free(league_name);
 
     //TODO league name could contain whitespaces!
     const league_slice = league_name[0..std.mem.len(league_name)];
@@ -592,10 +594,8 @@ export fn cycleu_fetch_league(
     for (0.., ranking_parsed.value) |i, rank_parsed| {
         var team_index: ?u8 = null;
         for (league.teams[0..league.team_n], 0..) |team, j| {
-            print("{d}.) team.name: {s}, rank_parsed.team: {s}\n", .{j, team.name, rank_parsed.team});
             if (std.mem.eql(u8, std.mem.span(team.name), rank_parsed.team)) {
                 team_index = @intCast(j);
-                print("FOUND IT!!: {s}\n", .{rank_parsed.team});
                 break;
             }
         }
@@ -625,18 +625,22 @@ export fn cycleu_fetch_league(
 export fn cycleu_fetch_matchday(
     matchday: *Matchday,
     association_code: AssociationType,
-    league_name: char_ptr,
+    league_name_unescaped: char_ptr,
     league: League, //TODO make this nullable
     number: u8,
     recursive: bool
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
 
-    const url_matchday = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}/matchdays/{d}", .{
+    const league_name = c.curl_easy_escape(curl, league_name_unescaped, @intCast(std.mem.span(league_name_unescaped).len));
+    defer c.curl_free(league_name);
+
+    const url_matchday = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}/matchdays/{d} ", .{
         URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
         ASSOCIATION_CODES[@intFromEnum(association_code)],
         URL_BASE, league_name, number
     }) catch return FetchStatus.OutOfMemory;
+    url_matchday[url_matchday.len-1] = 0;
     defer allocator.free(url_matchday);
 
     var json_matchday: []u8 = undefined;
@@ -906,7 +910,7 @@ test "main" {
     print("league {d}: {s} ({s})\n", .{1, ass_decoy.leagues[1].name_long, ass_decoy.leagues[1].name_short});
 
     var league_decoy: League = undefined;
-    ret_val = cycleu_fetch_league(&league_decoy, AssociationType.Deutschland, "b11", false, false);
+    ret_val = cycleu_fetch_league(&league_decoy, AssociationType.Deutschland, "bp frauen", false, false);
     if (ret_val != FetchStatus.Ok) {
         if (ret_val == FetchStatus.JSONMisformated)
             print("Json was misformated. Fuck you\n", .{});
@@ -915,7 +919,7 @@ test "main" {
     defer league_decoy.deinit();
 
     var matchday_decoy: Matchday = undefined;
-    ret_val = cycleu_fetch_matchday(&matchday_decoy, AssociationType.Deutschland, "b11", league_decoy, 1, false);
+    ret_val = cycleu_fetch_matchday(&matchday_decoy, AssociationType.Deutschland, "bp frauen", league_decoy, 1, false);
     if (ret_val != FetchStatus.Ok) {
         if (ret_val == FetchStatus.JSONMisformated)
             print("Json was misformated. Fuck you\n", .{});
