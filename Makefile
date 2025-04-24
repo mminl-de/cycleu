@@ -1,11 +1,13 @@
 SRC ?= lib.zig
 NAME ?= cycleu
 OUT_DIR ?= out/lib$(NAME).so
+DOCS_DIR ?= docs/
 
 install:
 	zig build-lib \
 		--name $(NAME) \
 		-femit-bin=$(OUT_DIR) \
+		-femit-docs=$(DOCS_DIR) \
 		-target native-native-gnu \
 		-dynamic \
 		-O ReleaseFast \
@@ -24,9 +26,7 @@ debug:
 		$(SRC)
 
 test:
-	zig build-exe \
-		--name $(NAME) \
-		-target native-native-gnu \
+	zig test \
 		-I /usr/include \
 		-L /usr/lib \
 		-lc \
