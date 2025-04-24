@@ -19,14 +19,19 @@ TODO
 - cycleu_fetch_association
     - [x] working 
     - [ ] feature complete (json to struct support)
+        - [ ] name_short
+        - [ ] name_long
     - [x] not leaking
 - cycleu_fetch_league
     - [x] working
     - [ ] feature complete (json to struct support)
-    - [ ] not leaking
+        - [ ] last_update
+    - [x] not leaking
 - cycleu_fetch_matchday
     - [x] working
     - [ ] feature complete (json to struct support)
+        - [ ] teams[].lastImport
+        - [ ] incidents
     - [ ] not leaking
 - cycleu_fetch_club
     - [ ] working
@@ -37,11 +42,12 @@ TODO
     - [ ] feature complete (json to struct support)
     - [ ] not leaking
 #### TODO
-- support league names with spaces
-- fix memory leaks in fetch_league and fetch_matchday
+- fix memory leaks in fetch_matchday
 - write convertion function from json timestamp to time_t
 - support offline cache
 - Find API for associations
+- add recursive modes
+- fetch league if no league is provided in fetch_matchday for orig_team
 
 ## cycleu
 > [!WARNING]
