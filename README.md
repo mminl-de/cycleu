@@ -3,10 +3,10 @@ This repository contains **libcycleu**, a C ABI compatible library written in Zi
 
 ## libcycleu
 > [!WARNING]
-> Work In Progress
+> Work In Progress. All read functions should work. Though not all edge cases have been tested. Be aware that sometimes not all data in the structs are present! Offline mode and Writing is not implemented yet!
 
-This library accesses the internal API of [cycleball.eu/api](https://cycleball.eu/api), which the website (and probably the app) use as well. It simply returns JSON for different queries. As the server is quite slow to answer and to avoid load on the servers it provides an "offline version" where all or parts of the data are cached and saved for later. In order to write to the website, a key given by the admins is needed.<br>
-It provides all the data in structs and only has ~5 functions.<br>
+This library accesses the internal API of [cycleball.eu/api](https://cycleball.eu/api), which the website (and probably the app) use as well. It simply returns JSON for different queries. As the server is quite slow to answer and to avoid load on the servers it provides an "offline version" where all or parts of the data are cached and saved for later. In order to write to the website, the write key is needed as in the official app and website.<br>
+It provides all the data in structs and only has ~5 public functions.<br>
 Although the library is written in Zig, it is C ABI compatible and thus can be used from C/C++ like any other library.
 
 ### Installation
@@ -17,9 +17,9 @@ TODO
 
 ## cycleu
 > [!WARNING]
-> Work In Progress
+> Work In Progress. This is not yet working!
 
-This tools allows to access all data available in cycleball.eu through cycleu-lib. It is written in zig and also uses the capability of cycleu-lib to create and use a offline database of all or just a part of the data from cycleball.eu. The main reason for this feature is, that the response times from cycleball.eu is pretty slow (~1-5s)
+This tools allows to access all data available in cycleball.eu through cycleu-lib. It is written in zig and also uses the capability of cycleu-lib to create and use a offline database of all or just a part of the data from cycleball.eu. The main reason for this feature is, that the response times from cycleball.eu is pretty slow (~1-3s)
 For now you can only get very specific data like goals of team 1 in game 3 in Matchday 4 from 1. BL, DE not spectrums of data like all games of the 4th Matchday
 
 ### Usage
