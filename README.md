@@ -47,6 +47,12 @@ TODO
 - Find API for associations
 - add recursive modes
 - fetch league if no league is provided in fetch_matchday for orig_team
+- fetch club 
+- make tests work in Makefiles
+- write cycleu_fetch_club function
+- write cycleu_write_result
+- make is_writable check more robust
+- Comment
 
 ## cycleu
 > [!WARNING]
