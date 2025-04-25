@@ -32,7 +32,7 @@ TODO
     - [ ] feature complete (json to struct support)
         - [ ] teams[].lastImport
         - [ ] incidents
-    - [ ] not leaking
+    - [x] not leaking
 - cycleu_fetch_club
     - [ ] working
     - [ ] feature complete (json to struct support)
@@ -42,7 +42,6 @@ TODO
     - [ ] feature complete (json to struct support)
     - [ ] not leaking
 #### TODO
-- fix memory leaks in fetch_matchday
 - write convertion function from json timestamp to time_t
 - support offline cache
 - Find API for associations

@@ -115,12 +115,14 @@ const Matchday = extern struct {
 
     //TODO how do incidents work? We need an example
     fn deinit(self: *const Matchday) void {
+        self.gym.deinit();
+
         allocator.free(std.mem.span(self.host_club_name));
 
         for (self.teams[0..self.team_n]) |team| team.deinit();
         allocator.free(self.teams[0..self.team_n]);
 
-        allocator.free(self.games[0..self.team_n]);
+        allocator.free(self.games[0..self.game_n]);
     }
 };
 
@@ -691,8 +693,9 @@ export fn cycleu_fetch_matchday(
 
     const teams = allocator.alloc(Matchday_Team, matchday_parsed.teams.len) catch return FetchStatus.OutOfMemory;
     for (0.., matchday_parsed.teams) |i, team| {
-        const players = allocator.alloc(Matchday_Player, matchday_parsed.teams.len) catch return FetchStatus.OutOfMemory;
+        const players = allocator.alloc(Matchday_Player, team.players.len) catch return FetchStatus.OutOfMemory;
         for (0.., team.players) |j, player| {
+            print("COPYING NAME: {s}\n", .{player.name});
             players[j] = .{
                 .player = .{
                     .name = slice_deepcopy_to_charptr(player.name) catch return FetchStatus.JSONMisformated,
