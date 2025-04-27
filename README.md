@@ -18,9 +18,9 @@ TODO
 ### State
 - cycleu_fetch_association
     - [x] working 
-    - [ ] feature complete (json to struct support)
-        - [ ] name_short
-        - [ ] name_long
+    - [X] feature complete (json to struct support)
+        - [X] name_short
+        - [X] name_long
     - [x] not leaking
 - cycleu_fetch_league
     - [x] working
@@ -44,7 +44,6 @@ TODO
 #### TODO
 - write convertion function from json timestamp to time_t
 - support offline cache
-- Find API for associations
 - make tests work in Makefiles
 - write cycleu_write_result
 - make is_writable check more robust

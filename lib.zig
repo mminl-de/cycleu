@@ -21,11 +21,9 @@ const print = std.debug.print;
 
 
 //TODO Reverse engineer API for getting all available Associations
-const AssociationType = enum(u8) { Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz };
-const FetchStatus = enum(u8) { Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, CURL, OutOfMemory, JSONMisformated, Unknown };
+const FetchStatus = enum(u8) { Ok, AuthCodeWrong, LeagueUnknown, AssociationUnknown, GameUnknown, Internet, CURL, OutOfMemory, JSONMisformated, Unknown };
 const URLProtocol = enum(u8) { HTTPS, HTTP, FILE };
 
-const ASSOCIATION_CODES = [_]*const [2:0]u8{ "de", "by", "bb", "bw", "he", "rp" };
 const URL_BASE = "cycleball.eu/api";
 const URL_PROTOCOLS = [_][]const u8{ "https://", "http://", "file://" }; // TODO CONSIDER file://
 
@@ -252,19 +250,81 @@ export fn cycleu_init() callconv(.C) bool {
     return true;
 }
 
+//associations array has to be deinited one by one and then free the array itself
+export fn cycleu_fetch_associations(
+    associations: **Association,
+    associations_count: *u8,
+    recursive: bool,
+) callconv(.C) FetchStatus {
+    const url =
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)] ++ 
+        "cycleball.eu" ++ "/orgas.json";
+
+    var json_associations: []u8 = undefined;
+    var ret_val = fetch_url(url, &json_associations);
+    if (ret_val != FetchStatus.Ok) {
+        print("failed to fetch associations {s} :(", .{@tagName(ret_val)});
+        return ret_val;
+    }
+    defer allocator.free(json_associations);
+
+    const _Association = struct{
+        name: []const u8,
+        displayName: []const u8
+    };
+
+    const associations_parsed = std.json.parseFromSlice([]_Association, allocator, json_associations, .{.ignore_unknown_fields = true}) catch |err| {
+        print("JSON for Associations are wrong format: {s}\n", .{@errorName(err)});
+        return FetchStatus.JSONMisformated;
+    };
+    defer associations_parsed.deinit();
+
+    associations_count.* = @intCast(associations_parsed.value.len);
+    associations.* = &((allocator.alloc(Association, associations_count.*) catch return FetchStatus.OutOfMemory)[0]);
+    for(associations_parsed.value, 0..) |association, i| {
+        @as([*]Association, @ptrCast(associations.*))[i] = .{
+            .name_short = slice_deepcopy_to_charptr(association.name) catch return FetchStatus.OutOfMemory,
+            .name_long = slice_deepcopy_to_charptr(association.displayName) catch return FetchStatus.OutOfMemory,
+            .leagues = undefined,
+            .league_n = 0,
+            .clubs = undefined,
+            .club_n = 0
+        };
+        if(recursive){
+            ret_val = cycleu_fetch_association(
+                &(@as([*]Association, @ptrCast(associations.*))[i]),
+                @as([*]Association, @ptrCast(associations.*))[i].name_short,
+                true, recursive
+            );
+            if(ret_val != FetchStatus.Ok) {
+                return ret_val;
+            }
+        }
+    }
+    return FetchStatus.Ok;
+}
+
 export fn cycleu_fetch_association(
     association: *Association,
-    association_code: AssociationType,
+    association_name: char_ptr,
+    base_infos_present: bool,
     recursive: bool,
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
 
-    const url =
-        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)] ++ 
-        ASSOCIATION_CODES[@intFromEnum(association_code)] ++ 
-        "." ++ URL_BASE;
-    const url_leagues = url ++ "/leagues";
-    const url_clubs = url ++ "/clubs";
+    const url = std.fmt.allocPrint(allocator, "{s}{s}.{s} ", .{
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
+        std.mem.span(association_name), URL_BASE
+    }) catch return FetchStatus.OutOfMemory;
+    url[url.len-1] = 0;
+
+    const url_leagues = std.fmt.allocPrint(allocator, "{s}/leagues ", .{
+    url[0..url.len-1]}) catch return FetchStatus.OutOfMemory;
+    url_leagues[url_leagues.len-1] = 0;
+
+    const url_clubs = std.fmt.allocPrint(allocator, "{s}/clubs ", .{
+    url[0..url.len-1]}) catch return FetchStatus.OutOfMemory;
+    url_clubs[url_clubs.len-1] = 0;
 
     var json_leagues: []u8 = undefined;
     var ret_val = fetch_url(url_leagues, &json_leagues);
@@ -339,7 +399,7 @@ export fn cycleu_fetch_association(
             // TODO .last_update = league_parsed.lastImport
         };
         if(recursive) {
-            ret_val = cycleu_fetch_league(&leagues[i], association_code, leagues[i].name_short, true, recursive);
+            ret_val = cycleu_fetch_league(&leagues[i], association_name, leagues[i].name_short, true, recursive);
             if (ret_val != FetchStatus.Ok)
                 return ret_val;
         }
@@ -407,14 +467,34 @@ export fn cycleu_fetch_association(
         };
     }
 
-    association.* = .{
-        .name_short = ASSOCIATION_CODES[@intFromEnum(association_code)],
-        .name_long = "UNKNOWN",
-        .leagues = leagues.ptr,
-        .league_n = @intCast(leagues.len),
-        .clubs = clubs.ptr,
-        .club_n = @intCast(clubs.len)
-    };
+    if(!base_infos_present) {
+        var associations: *Association = undefined;
+        var associations_len: u8 = 0;
+        ret_val = cycleu_fetch_associations(&associations, &associations_len, false);
+        if(ret_val != FetchStatus.Ok) {
+            print("Couldnt fetch Associatons basic data: {s}", .{@tagName(ret_val)});
+            return ret_val;
+        }
+        var real_association_index: ?u8 = null;
+
+        const associations_slice: [*]Association = @ptrCast(associations);
+
+        for(0..associations_len) |i| {
+            if(std.mem.eql(u8, std.mem.span(associations_slice[i].name_short), std.mem.span(association_name))) {
+                real_association_index = @intCast(i);
+                break;
+            }
+        }
+        if(real_association_index == null)
+            return FetchStatus.AssociationUnknown;
+        association.name_short = slice_deepcopy_to_charptr(std.mem.span(associations_slice[real_association_index.?].name_short)) catch return FetchStatus.OutOfMemory;
+        association.name_long = slice_deepcopy_to_charptr(std.mem.span(associations_slice[real_association_index.?].name_long)) catch return FetchStatus.OutOfMemory;
+    }
+
+    association.leagues = leagues.ptr;
+    association.league_n = @intCast(leagues.len);
+    association.clubs = clubs.ptr;
+    association.club_n = @intCast(clubs.len);
 
     return FetchStatus.Ok;
 }
@@ -423,7 +503,7 @@ export fn cycleu_fetch_association(
 //This function will not create an Association. The value in league will remain null
 export fn cycleu_fetch_league(
     league: *League,
-    association_code: AssociationType,
+    association_name: char_ptr,
     league_name_unescaped: char_ptr,
     base_infos_present: bool,
     recursive: bool
@@ -436,8 +516,7 @@ export fn cycleu_fetch_league(
     const league_slice = league_name[0..std.mem.len(league_name)];
     const url_general = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s} ", .{
         URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
-        ASSOCIATION_CODES[@intFromEnum(association_code)],
-        URL_BASE, league_slice
+        std.mem.span(association_name), URL_BASE, league_slice
     }) catch return FetchStatus.OutOfMemory;
     url_general[url_general.len - 1] = 0;
     defer allocator.free(url_general);
@@ -546,7 +625,7 @@ export fn cycleu_fetch_league(
         
         const matchdays = allocator.alloc(Matchday, @intCast(matchdays_count.?)) catch return FetchStatus.OutOfMemory;
         for(0..@intCast(matchdays_count.?)) |i| {
-            ret_val = cycleu_fetch_matchday(&(matchdays[0..matchdays_count.?][i]), association_code, league.name_short, @intCast(i+1));
+            ret_val = cycleu_fetch_matchday(&(matchdays[0..matchdays_count.?][i]), association_name, league.name_short, @intCast(i+1));
             if(ret_val != FetchStatus.Ok)
                 return ret_val;
         }
@@ -658,7 +737,7 @@ export fn cycleu_fetch_league(
 
 export fn cycleu_fetch_matchday(
     matchday: *Matchday,
-    association_code: AssociationType,
+    association_name: char_ptr,
     league_name_unescaped: char_ptr,
     number: u8,
 ) callconv(.C) FetchStatus {
@@ -669,8 +748,7 @@ export fn cycleu_fetch_matchday(
 
     const url_matchday = std.fmt.allocPrint(allocator, "{s}{s}.{s}/leagues/{s}/matchdays/{d} ", .{
         URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
-        ASSOCIATION_CODES[@intFromEnum(association_code)],
-        URL_BASE, league_name, number
+        std.mem.span(association_name), URL_BASE, league_name, number
     }) catch return FetchStatus.OutOfMemory;
     url_matchday[url_matchday.len-1] = 0;
     defer allocator.free(url_matchday);
@@ -837,15 +915,15 @@ export fn cycleu_fetch_matchday(
 
 export fn cycleu_fetch_club(
     club: *Club,
-    association_code: AssociationType,
+    association_name: char_ptr,
     club_name: char_ptr,
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
 
-    const url =
-        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)] ++ 
-        ASSOCIATION_CODES[@intFromEnum(association_code)] ++ 
-        "." ++ URL_BASE ++ "/clubs";
+    const url = std.fmt.allocPrint(allocator, "{s}{s}.{s}/clubs ", .{
+        URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)],
+        std.mem.span(association_name), URL_BASE
+    }) catch return FetchStatus.OutOfMemory;
 
     var json_clubs: []u8 = undefined;
     const ret_val = fetch_url(url, &json_clubs);
@@ -892,7 +970,7 @@ export fn cycleu_fetch_club(
         }
     }
     if(club_index == null) {
-        print("ERROR: Could not find club named: '{s}' in Association '{s}'\n", .{club_name, @tagName(association_code)});
+        print("ERROR: Could not find club named: '{s}' in Association '{s}'\n", .{club_name, std.mem.span(association_name)});
         return FetchStatus.JSONMisformated;
     }
 
@@ -1041,9 +1119,21 @@ test "main" {
     //defer ass_decoy.deinit();
     
     //print("league {d}: {s} ({s})\n", .{1, ass_decoy.leagues[1].name_long, ass_decoy.leagues[1].name_short});
+    var associations: *Association = undefined;
+    var associations_len: u8 = 0;
+    var ret_val = cycleu_fetch_associations(&(associations), &associations_len, false);
+    if (ret_val != FetchStatus.Ok) {
+        print("??? :(( Couldnt fetch metadata about all the associations\n", .{});
+        return;
+    }
+
+    const associations_slice: [*]Association = @ptrCast(associations);
+    for(0..associations_len) |i| {
+        print("Association: '{s}': '{s}'\n", .{associations_slice[i].name_short, associations_slice[i].name_long});
+    }
 
     var league: League = undefined;
-    const ret_val = cycleu_fetch_league(&league, AssociationType.Deutschland, "b23", false, true);
+    ret_val = cycleu_fetch_league(&league, "de", "b23", false, true);
     if (ret_val != FetchStatus.Ok) {
         if (ret_val == FetchStatus.JSONMisformated)
             print("Json was misformated. Fuck you\n", .{});
