@@ -34,9 +34,9 @@ TODO
         - [ ] incidents
     - [x] not leaking
 - cycleu_fetch_club
-    - [ ] working
-    - [ ] feature complete (json to struct support)
-    - [ ] not leaking
+    - [x] working
+    - [x] feature complete (json to struct support)
+    - [x] not leaking
 - cycleu_write_result
     - [ ] working
     - [ ] feature complete (json to struct support)
@@ -45,11 +45,7 @@ TODO
 - write convertion function from json timestamp to time_t
 - support offline cache
 - Find API for associations
-- add recursive modes
-- fetch league if no league is provided in fetch_matchday for orig_team
-- fetch club 
 - make tests work in Makefiles
-- write cycleu_fetch_club function
 - write cycleu_write_result
 - make is_writable check more robust
 - Comment
