@@ -43,6 +43,9 @@ const Association = extern struct {
 
         for (self.clubs[0..self.club_n]) |club| club.deinit();
         allocator.free(self.clubs[0..self.club_n]);
+
+        allocator.free(self.name_short);
+        allocator.free(self.name_long);
     }
 };
 
