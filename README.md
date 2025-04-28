@@ -44,7 +44,6 @@ TODO
 #### TODO
 - write convertion function from json timestamp to time_t
 - support offline cache
-- make tests work in Makefiles
 - write cycleu_write_result
 - make is_writable check more robust
 - Comment
