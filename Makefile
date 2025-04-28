@@ -25,6 +25,9 @@ debug:
 		-lc \
 		$(SRC)
 
+test_mem_leaks:
+	export CYCLEU_TEST_MEMLEAKS=1
+
 test:
 	zig test \
 		-I /usr/include \
@@ -32,3 +35,4 @@ test:
 		-lc \
 		-lcurl \
 		$(SRC)
+	unset CYCLEU_TEST_MEMLEAKS

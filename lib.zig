@@ -8,9 +8,10 @@ const c = @cImport(@cInclude("curl/curl.h"));
 const AllocatorType = enum(u8) { c, testing };
 
 // TODO const allocator = if (builtin.is_test) std.testing.allocator else std.heap.c_allocator;
-const allocator = if (builtin.is_test and @import("tests").allocator != .c)
-    std.testing.allocator
-    else std.heap.c_allocator;
+//const allocator = if (builtin.is_test and @import("tests").allocator != .c)
+//    std.testing.allocator
+//    else std.heap.c_allocator;
+var allocator = std.heap.c_allocator;
 
 
 const char_ptr = [*:0]const u8;
@@ -44,8 +45,8 @@ const Association = extern struct {
         for (self.clubs[0..self.club_n]) |club| club.deinit();
         allocator.free(self.clubs[0..self.club_n]);
 
-        allocator.free(self.name_short);
-        allocator.free(self.name_long);
+        allocator.free(std.mem.span(self.name_short));
+        allocator.free(std.mem.span(self.name_long));
     }
 };
 
@@ -257,7 +258,7 @@ export fn cycleu_init() callconv(.C) bool {
 export fn cycleu_fetch_associations(
     associations: **Association,
     associations_count: *u8,
-    recursive: bool,
+    depth: u8,
 ) callconv(.C) FetchStatus {
     const url =
         URL_PROTOCOLS[@intFromEnum(URLProtocol.HTTPS)] ++ 
@@ -293,11 +294,11 @@ export fn cycleu_fetch_associations(
             .clubs = undefined,
             .club_n = 0
         };
-        if(recursive){
+        if(depth > 1){
             ret_val = cycleu_fetch_association(
                 &(@as([*]Association, @ptrCast(associations.*))[i]),
                 @as([*]Association, @ptrCast(associations.*))[i].name_short,
-                true, recursive
+                true, depth-1 
             );
             if(ret_val != FetchStatus.Ok) {
                 return ret_val;
@@ -311,7 +312,7 @@ export fn cycleu_fetch_association(
     association: *Association,
     association_name: char_ptr,
     base_infos_present: bool,
-    recursive: bool,
+    depth: u8,
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
 
@@ -401,8 +402,8 @@ export fn cycleu_fetch_association(
             .last_update = 0
             // TODO .last_update = league_parsed.lastImport
         };
-        if(recursive) {
-            ret_val = cycleu_fetch_league(&leagues[i], association_name, leagues[i].name_short, true, recursive);
+        if(depth > 1) {
+            ret_val = cycleu_fetch_league(&leagues[i], association_name, leagues[i].name_short, true, depth-1);
             if (ret_val != FetchStatus.Ok)
                 return ret_val;
         }
@@ -509,7 +510,7 @@ export fn cycleu_fetch_league(
     association_name: char_ptr,
     league_name_unescaped: char_ptr,
     base_infos_present: bool,
-    recursive: bool
+    depth: u8 
 ) callconv(.C) FetchStatus {
     if (curl == null) return FetchStatus.CURL;
 
@@ -599,7 +600,7 @@ export fn cycleu_fetch_league(
         };
     }
 
-    if(recursive) {
+    if(depth > 1) {
         //First we need to download /matchday because we dont know how many matchdays there are
         const url_matchdays = std.fmt.allocPrint(allocator, "{s}{s}", .{url_general[0..url_general.len - 1], "/matchdays "}) catch return FetchStatus.OutOfMemory;
         url_matchdays[url_matchdays.len - 1] = 0;
@@ -1112,6 +1113,9 @@ test "main" {
     _ = cycleu_init();
     defer cycleu_deinit();
 
+    if(std.process.hasEnvVar(allocator, "CYCLEU_TEST_MEMLEAKS") catch return)
+        allocator = std.testing.allocator;
+
     //var ass_decoy: Association = undefined;
     //var ret_val = cycleu_fetch_association(&ass_decoy, AssociationType.Deutschland, false);
     //if (ret_val != FetchStatus.Ok) {
@@ -1133,6 +1137,11 @@ test "main" {
     const associations_slice: [*]Association = @ptrCast(associations);
     for(0..associations_len) |i| {
         print("Association: '{s}': '{s}'\n", .{associations_slice[i].name_short, associations_slice[i].name_long});
+    }
+
+    defer {
+        for(0..associations_len) |i| associations_slice[i].deinit();
+        //allocator.free(associations_slice[0..associations_len]);
     }
 
     var league: League = undefined;
