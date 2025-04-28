@@ -474,7 +474,7 @@ export fn cycleu_fetch_association(
     if(!base_infos_present) {
         var associations: *Association = undefined;
         var associations_len: u8 = 0;
-        ret_val = cycleu_fetch_associations(&associations, &associations_len, false);
+        ret_val = cycleu_fetch_associations(&associations, &associations_len, 1);
         if(ret_val != FetchStatus.Ok) {
             print("Couldnt fetch Associatons basic data: {s}", .{@tagName(ret_val)});
             return ret_val;
@@ -1128,7 +1128,7 @@ test "main" {
     //print("league {d}: {s} ({s})\n", .{1, ass_decoy.leagues[1].name_long, ass_decoy.leagues[1].name_short});
     var associations: *Association = undefined;
     var associations_len: u8 = 0;
-    var ret_val = cycleu_fetch_associations(&(associations), &associations_len, false);
+    var ret_val = cycleu_fetch_associations(&(associations), &associations_len, 1);
     if (ret_val != FetchStatus.Ok) {
         print("??? :(( Couldnt fetch metadata about all the associations\n", .{});
         return;
@@ -1145,7 +1145,7 @@ test "main" {
     }
 
     var league: League = undefined;
-    ret_val = cycleu_fetch_league(&league, "de", "b23", false, true);
+    ret_val = cycleu_fetch_league(&league, "de", "b23", false, 2);
     if (ret_val != FetchStatus.Ok) {
         if (ret_val == FetchStatus.JSONMisformated)
             print("Json was misformated. Fuck you\n", .{});
