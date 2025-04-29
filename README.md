@@ -43,7 +43,6 @@ TODO
     - [ ] not leaking
 #### TODO
 - write convertion function from json timestamp to time_t
-- support offline cache
 - write cycleu_write_result
 - make is_writable check more robust
 - Comment

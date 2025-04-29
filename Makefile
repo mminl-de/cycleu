@@ -33,4 +33,5 @@ test:
 		-L /usr/lib \
 		-lc \
 		-lcurl \
+		-freference-trace \
 		$(SRC)
