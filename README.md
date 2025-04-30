@@ -45,6 +45,7 @@ TODO
 - write convertion function from json timestamp to time_t
 - write cycleu_write_result
 - make is_writable check more robust
+- Add logging possibility?
 - Comment
 
 ## cycleu
