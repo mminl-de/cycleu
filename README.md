@@ -1,6 +1,13 @@
 # cycleu
 This repository contains **libcycleu**, a C ABI compatible library written in Zig that reads and writes from [cycleball.eu](https://cycleball.eu) and **cycleu**, a CLI frontend over the library. The latter is a proof-of-concept tool that uses straightforward command line arguments to leverage the library.
 
+## Why?
+We develop [Interscore](https://github.com/mminl-de/interscore), a scoreboard and livestream setup for Cycleball. The goal is to provide easy, high-quality Cycleball livestreams for everyone. For this software we want to integrate cycleball.eu's live results:
+
+1. To access them, calculate live tables and show the audience the course of the other matchday that is running besides the one we stream. This can be especially useful for the 1st and 2nd Bundesliga.
+2. To automatically write the results of the event to cycleball.eu.
+3. Load a Matchday directly from cycleball.eu instead of creating it tediously by hand
+
 ## libcycleu
 > [!IMPORTANT]
 > The library is in fully working condition. All JSON files were tested and libcycleu can handle all normal cases. Sometimes the API from cycleball.eu is unpredictable and misses important keys or changes Teamnames mid-json. This can hardly be handled by the library and will result in an error fetching the property (mostly Matchdays). Be aware that sometimes not all data in the structs are present because of cycleball.eu or lack of implementation. Time is not implementet at all yet, its always 0! Writing is not implemented yet!
@@ -67,10 +74,3 @@ cycleu write -pin 654321 -verband de -staffel b11 -spieltag 4 -spiel 2 -htscore 
 ```
 
 See also `cycleu --help`.
-
-### Why?
-We develop [Interscore](https://github.com/mminl-de/interscore), a scoreboard and livestream setup for Cycleball. The goal is to provide easy, high-quality Cycleball livestreams for everyone. For this software we want to integrate cycleball.eu's live results:
-
-1. To access them, calculate live tables and show the audience the course of the other matchday that is running besides the one we stream. This can be especially useful for the 1st and 2nd Bundesliga.
-2. To automatically write the results of the event to cycleball.eu.
-3. Load a Matchday directly from cycleball.eu instead of creating it tediously by hand
