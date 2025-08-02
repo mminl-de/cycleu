@@ -14,6 +14,9 @@ const time_t = i64;
 const print = std.debug.print;
 
 
+const AssociationType = enum(u8) { Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz };
+// TODO fix
+const URLProtocol = enum(u8) { HTTPS };
 const FetchStatus = enum(u8) { Ok, AuthCodeWrong, LeagueUnknown, AssociationUnknown, GameUnknown, Internet, CURL, OutOfMemory, JSONMisformated, Unknown, CacheIOError, UnableToCache };
 
 const URL_BASE = "cycleball.eu/api";
