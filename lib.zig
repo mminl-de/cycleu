@@ -23,7 +23,8 @@ const print = std.debug.print;
 //TODO Reverse engineer API for getting all available Associations
 const AssociationType = enum(u8) { Deutschland, Bayern, Brandenburg, BadenWuerttemberg, Hessen, RheinlandPfalz };
 const FetchStatus = enum(u8) { Ok, AuthCodeWrong, LeagueUnknown, GameUnknown, Internet, CURL, OutOfMemory, JSONMisformated, Unknown };
-const URLProtocol = enum(u8) { HTTPS, HTTP, FILE };
+// TODO fix
+const URLProtocol = enum(u8) { HTTPS };
 
 const ASSOCIATION_CODES = [_]*const [2:0]u8{ "de", "by", "bb", "bw", "he", "rp" };
 const URL_BASE = "cycleball.eu/api";
