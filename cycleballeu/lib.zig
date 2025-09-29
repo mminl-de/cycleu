@@ -534,7 +534,7 @@ export fn cycleu_fetch_league(
         }
         defer allocator.free(json_general);
 
-        print("SUCCESS: LEAGUE: Received json_general:\n{s}", .{json_general});
+        //print("SUCCESS: LEAGUE: Received json_general:\n{s}", .{json_general});
 
         const _General = struct {
             shortName: []const u8,
@@ -621,8 +621,10 @@ export fn cycleu_fetch_league(
         const matchdays = allocator.alloc(Matchday, @intCast(matchdays_count.?)) catch return FetchStatus.OutOfMemory;
         for(0..@intCast(matchdays_count.?)) |i| {
             ret_val = cycleu_fetch_matchday(&(matchdays[0..matchdays_count.?][i]), association_name, league.name_short, @intCast(i+1), use_cache);
-            if(ret_val != FetchStatus.Ok and ret_val != FetchStatus.Unknown)
+            if(ret_val != FetchStatus.Ok and ret_val != FetchStatus.Unknown){
+                print("ERROR: Could not fetch a Matchday, aborting!", .{});
                 return ret_val;
+            }
         }
         league.matchdays = matchdays.ptr;
         league.matchday_n = @intCast(matchdays.len);
@@ -896,11 +898,11 @@ export fn cycleu_fetch_matchday(
                 break;
         }
         if (teama_index == null) {
-            print("ERROR: Could not find Team A from Game {d}: '{s}' from Teams in Matchday\n", .{game.number, game.teamA});
+            print("ERROR: Could not find Team A from Game {d}: '{s}' from Teams in Matchday {d}\n", .{game.number, game.teamA, number});
             return FetchStatus.Unknown;
         }
         if (teamb_index == null) {
-            print("ERROR: Could not find Team B from Game {d}: '{s}' from Teams in Matchday\n", .{game.number, game.teamB});
+            print("ERROR: Could not find Team B from Game {d}: '{s}' from Teams in Matchday {d}\n", .{game.number, game.teamB, number});
             return FetchStatus.Unknown;
         }
 
@@ -1191,21 +1193,41 @@ test "main" {
     if(std.process.hasEnvVar(allocator, "CYCLEU_TEST_MEMLEAKS") catch return)
         allocator = std.testing.allocator;
 
-    var associations: *Association = undefined;
-    var associations_len: u8 = 0;
-    const ret_val = cycleu_fetch_associations(&(associations), &associations_len, 4, true);
-    if (ret_val != FetchStatus.Ok) {
-        print("??? :(( Couldnt fetch metadata about all the associations: {s}\n", .{@tagName(ret_val)});
-        return;
-    }
+    //var associations: *Association = undefined;
+    //var associations_len: u8 = 0;
+    //const ret_val = cycleu_fetch_associations(&(associations), &associations_len, 4, true);
+    //if (ret_val != FetchStatus.Ok) {
+    //    print("??? :(( Couldnt fetch metadata about all the associations: {s}\n", .{@tagName(ret_val)});
+    //    return;
+    //}
 
-    const associations_slice: [*]Association = @ptrCast(associations);
-    for(0..associations_len) |i| {
-        print("Association: '{s}': '{s}'\n", .{associations_slice[i].name_short, associations_slice[i].name_long});
-    }
+    //const associations_slice: [*]Association = @ptrCast(associations);
+    //for(0..associations_len) |i| {
+    //    print("Association: '{s}': '{s}'\n", .{associations_slice[i].name_short, associations_slice[i].name_long});
+    //}
 
-    defer {
-        for(0..associations_len) |i| associations_slice[i].deinit();
-        //allocator.free(associations_slice[0..associations_len]);
+    //defer {
+    //    for(0..associations_len) |i| associations_slice[i].deinit();
+    //    //allocator.free(associations_slice[0..associations_len]);
+    //}
+    const league_names = [_][]const u8{"b11", "b22", "b23", "f52", "dphf1", "dphf2", "dphf3", "dpu23vr3", "dpvf1", "dpvf2", "dpvf3", "dpvf4", "dpvf5", "dpv1", "dpv2", "dpv3", "dpv4", "dpv5", "dpv6", "dpv7", "dpv7", "dpv8", "dpv9"};
+    for(league_names) |ln| {
+        var buf: [10]u8 = undefined;
+        std.mem.copyForwards(u8, buf[0..ln.len], ln);
+        buf[ln.len] = 0;
+        const ln_c: [*:0]const u8 = @as([*:0]const u8, @ptrCast(&buf[0]));
+
+        var bl: League = undefined;
+        const ret_val = cycleu_fetch_league(&bl, "de", ln_c, false, 10, true);
+        if(ret_val != FetchStatus.Ok) {
+            print("Couldnt fetch League: {s}", .{ln});
+            return;
+        }
+        for(bl.matchdays[0..bl.matchday_n]) |m| {
+            //print("Matchday {d}.:\n", .{i});
+            for(m.games[0..m.game_n]) |g| {
+                print("{s}:{d}:{d}:{s}\n", .{g.team_a.name, g.goals.a, g.goals.b, g.team_b.name});
+            }
+        }
     }
 }

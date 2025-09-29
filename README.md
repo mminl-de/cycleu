@@ -16,12 +16,7 @@ TODO
 TODO
 
 ### State
-- cycleu_fetch_association
-    - [x] working 
-    - [X] feature complete (json to struct support)
-        - [X] name_short
-        - [X] name_long
-    - [x] not leaking
+- cycleu_fetch_association ✅
 - cycleu_fetch_league
     - [x] working
     - [ ] feature complete (json to struct support)
@@ -33,10 +28,7 @@ TODO
         - [ ] teams[].lastImport
         - [ ] incidents
     - [x] not leaking
-- cycleu_fetch_club
-    - [x] working
-    - [x] feature complete (json to struct support)
-    - [x] not leaking
+- cycleu_fetch_club ✅
 - cycleu_write_result
     - [ ] working
     - [ ] feature complete (json to struct support)
