@@ -1,4 +1,7 @@
+.zig-cache/
 cycleballeu/cache/
+cycleballeu/docs/
+cycleballeu/out/
 cycleballeu/zig-out/
 cycleballeu/.zig-cache/
 radballat/radball.at/
