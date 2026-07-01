@@ -33,7 +33,7 @@ const Player = struct {
 const Gym = struct {
 	name: []u8,
 	addr: struct {
-		zip: [5] u8,
+		zip: [5]u8,
 		city: []u8,
 		street: []u8
 	},
@@ -64,27 +64,25 @@ fn parse_date(date_str: []const u8) ?i64 {
 
 	// Add days for years
 	var y: u16 = 1970;
-	while (y < year) : (y += 1) {
-		days += if (isLeapYear(y)) @as(i64, 366) else 365;
-	}
+	while (y < year) : (y += 1) days += if (is_leap_year(y)) @as(i64, 366) else 365;
 
 	// Add days for months of current year
 	const month_days = [_]u8{ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
 	for (month_days[0..month-1]) |md| {
 		days += md;
 	}
-	if (month > 2 and isLeapYear(year)) {
+	if (month > 2 and is_leap_year(year)) {
 		days += 1; // Leap day
 	}
 
 	// Add days of current month
 	days += day - 1;
 
-	return days * 86400;
+	return days * 86_400;
 }
 
-fn isLeapYear(year: u16) bool {
-    return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
+fn is_leap_year(year: u16) bool {
+	return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
 }
 
 fn idx_from_line(line: []const u8) !u8 {
@@ -143,9 +141,8 @@ fn game_from_str(input: []const u8) !?Game {
 	const team2_idx = try num_val_from_line(mb) - 1;
 
 	// If ma and mb are 0, the game is a filler, therefor we skip it
-	if (team1_idx == team2_idx and team1_idx == -1) return null
-	else if (team1_idx < 0 or team2_idx < 0) return error.Logic;
-	
+	if (team1_idx == team2_idx and team1_idx == -1) return null;
+	if (team1_idx < 0 or team2_idx < 0) return error.Logic;
 
 	// handle ta
 	const ta = lines.next() orelse return error.Syntax;
@@ -216,9 +213,9 @@ fn matchday_from_str(allocator: std.mem.Allocator, input: []const u8) !Matchday 
 }
 
 fn league_from_str(allocator: std.mem.Allocator, input: []const u8, league_name: []const u8) error{OutOfMemory, Syntax, Logic}!League {
-    var teams = std.ArrayList(Team).empty;
+	var teams = std.ArrayList(Team).empty;
 	defer teams.deinit(allocator);
-    var matchdays = std.ArrayList(Matchday).empty;
+	var matchdays = std.ArrayList(Matchday).empty;
 	defer matchdays.deinit(allocator);
 
 	const start = std.mem.find(u8, input, "team[1") orelse return error.Syntax;
@@ -258,13 +255,13 @@ fn league_from_str(allocator: std.mem.Allocator, input: []const u8, league_name:
 	return league;
 }
 
-const analyze_file_error = error {
+const AnalyzeFileError = error {
 	FileTooBig,
 	OutOfMemory,
 	Syntax,
 	Logic
 } || std.Io.File.OpenError || std.Io.File.ReadPositionalError;
-fn analyze_file(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, filename: []const u8) analyze_file_error!League{
+fn analyze_file(allocator: std.mem.Allocator, io: std.Io, dir: std.Io.Dir, filename: []const u8) AnalyzeFileError!League {
 	const file = try dir.openFile(io, filename, .{});
 
 	// This max is arbitrary and probably way too big
@@ -281,8 +278,8 @@ fn analyze_dir(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]Le
 	defer dir.close(io);
 	var dir_iter = dir.iterate();
 
-    var leagues = std.ArrayList(League).empty;
-    var leagues_futures = std.ArrayList(std.Io.Future(analyze_file_error!League)).empty;
+	var leagues = std.ArrayList(League).empty;
+	var leagues_futures = std.ArrayList(std.Io.Future(AnalyzeFileError!League)).empty;
 
 	while (try dir_iter.next(io)) |entry| {
 		if (entry.kind != std.Io.File.Kind.file) continue;
@@ -291,10 +288,10 @@ fn analyze_dir(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]Le
 
 		try leagues_futures.append(allocator, league_fut);
 	}
-	for(0..leagues_futures.items.len) |i| {
+	for (0..leagues_futures.items.len) |i| {
 		var fut = leagues_futures.items[i];
 		const league = fut.await(io) catch |e| {
-			std.debug.print("WARN: failed to analyze something with {}\n", .{e});
+			print("WARN: failed to analyze something with {}\n", .{e});
 			continue;
 		};
 		try leagues.append(allocator, league);
@@ -303,9 +300,13 @@ fn analyze_dir(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]Le
 }
 
 fn print_league(league: League) !void {
-	print("*****************************************\n", .{});
-	print("League: '{s}'\n", .{league.name});
-	print("Matchdays:\n", .{});
+	print(
+		\\*****************************************
+		\\League: '{s}'
+		\\Matchdays:
+		\\
+		, .{league.name}
+	);
 	for (league.matchdays) |md| {
 		print("*** Matchday: {}\n", .{md.number});
 		for (md.games, 0..) |g, i| {
@@ -327,13 +328,17 @@ fn print_league(league: League) !void {
 }
 
 pub fn main(init: std.process.Init) !void {
-    var arena = std.heap.ArenaAllocator.init(init.gpa);
-    defer arena.deinit();
-    const allocator = arena.allocator();
+	var args = init.minimal.args.iterate();
+	_ = args.skip();
 
-	const leagues = try analyze_dir(allocator, init.io, "/home/mrmine/prg/cycleu/radballat/radball.at/https:/www.vfh-muecheln.de/2026/Ergebnisse/Deutschland/Meisterschaft");
+	const path = args.next() orelse return error.Args;
 
-	for(leagues) |league|
-		try print_league(league);
+	var arena = std.heap.ArenaAllocator.init(init.gpa);
+	defer arena.deinit();
+	const allocator = arena.allocator();
+
+	const leagues = try analyze_dir(allocator, init.io, path);
+
+	for (leagues) |league| try print_league(league);
 	return;
 }
