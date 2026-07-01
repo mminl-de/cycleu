@@ -5,3 +5,5 @@ while IFS= read -r link; do
 	mkdir -p $(dirname "$base/$link")
 	curl "$link" > "$base/$link"
 done < radballat.links
+
+rm radballat.links

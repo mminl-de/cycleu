@@ -1,5 +1,8 @@
 cycleballeu/cache/
 cycleballeu/zig-out/
 cycleballeu/.zig-cache/
+
 radballat/radball.at/
 radballat/radballat.links
+radballat/zig-out/
+radballat/.zig-cache/
